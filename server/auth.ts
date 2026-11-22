@@ -2,12 +2,43 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { NextFunction, Request, Response } from 'express';
+import { getDataDir, kvGetJson, kvSetJson } from './storage.ts';
 
-const DATA_DIR = path.resolve(process.cwd(), 'data');
-const ADMIN_CREDENTIAL_PATH = path.join(DATA_DIR, 'admin.json');
+const ADMIN_KV_KEY = 'huella:admin_credential';
 
-const RUNTIME_SESSION_SECRET =
-  (process.env.SESSION_SECRET || '').trim() || crypto.randomBytes(32).toString('hex');
+function getAdminCredentialPath(): string {
+  return path.join(getDataDir(), 'admin.json');
+}
+
+function resolveSessionSecret(): string {
+  const explicit = (process.env.SESSION_SECRET || '').trim();
+  if (explicit) return explicit;
+
+  const secretMaterial = [
+    process.env.ADMIN_PASSWORD || '',
+    process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN || '',
+    process.env.MS_CLIENT_SECRET || '',
+  ]
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .join('|');
+
+  if (secretMaterial) {
+    const scope =
+      process.env.VERCEL_PROJECT_ID ||
+      process.env.VERCEL_PROJECT_PRODUCTION_URL ||
+      process.env.VERCEL_URL ||
+      'huella-bienestar';
+    return crypto
+      .createHmac('sha256', `session-signing:${scope}`)
+      .update(secretMaterial)
+      .digest('hex');
+  }
+
+  return crypto.randomBytes(32).toString('hex');
+}
+
+const RUNTIME_SESSION_SECRET = resolveSessionSecret();
 
 interface StoredAdminCredential {
   username: string;
@@ -30,8 +61,12 @@ function getEnvAdminCredentials(): { username: string; password: string } | null
 }
 
 async function readClaimedAdmin(): Promise<StoredAdminCredential | null> {
+  const fromKv = await kvGetJson<StoredAdminCredential>(ADMIN_KV_KEY);
+  if (fromKv && fromKv.username && fromKv.salt && fromKv.hash) {
+    return fromKv;
+  }
   try {
-    const raw = await fs.readFile(ADMIN_CREDENTIAL_PATH, 'utf8');
+    const raw = await fs.readFile(getAdminCredentialPath(), 'utf8');
     const parsed = JSON.parse(raw) as Partial<StoredAdminCredential>;
     if (parsed.username && parsed.salt && parsed.hash) {
       return parsed as StoredAdminCredential;
@@ -91,7 +126,7 @@ export async function claimFirstRunAdmin(
     return { ok: false, error: 'La contraseña debe tener al menos 6 caracteres.' };
   }
 
-  await fs.mkdir(DATA_DIR, { recursive: true });
+  await fs.mkdir(getDataDir(), { recursive: true });
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = hashPassword(password, salt);
   const payload: StoredAdminCredential = {
@@ -102,10 +137,11 @@ export async function claimFirstRunAdmin(
   };
 
   try {
-    await fs.writeFile(ADMIN_CREDENTIAL_PATH, JSON.stringify(payload, null, 2), {
+    await fs.writeFile(getAdminCredentialPath(), JSON.stringify(payload, null, 2), {
       encoding: 'utf8',
       flag: 'wx',
     });
+    await kvSetJson(ADMIN_KV_KEY, payload);
     return { ok: true, username: cleanUser };
   } catch {
     return { ok: false, error: 'El acceso administrativo ya fue reclamado.' };

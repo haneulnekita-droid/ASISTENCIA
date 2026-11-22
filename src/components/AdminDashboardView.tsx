@@ -674,18 +674,36 @@ export function AdminDashboardView({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 rounded-2xl bg-[#F4FBF7] border border-[#CBEEDF] flex items-start gap-3">
-              <CheckCircle2 className="w-5 h-5 text-[#0F7A53] shrink-0 mt-0.5" />
-              <div className="space-y-1 text-xs">
-                <p className="font-bold text-[#0F533B]">
-                  Base de datos Excel permanente activa en servidor
-                </p>
-                <p className="text-[#2B6650] leading-relaxed">
-                  Cada registro se guarda inmediatamente en el libro estructurado{' '}
-                  <span className="font-mono">{data.excelMetadata.filename}</span> en el servidor (no usa almacenamiento temporal del navegador) y persiste entre sesiones y dispositivos.
-                </p>
+            {data.persistence?.mode === 'vercel-tmp' ? (
+              <div className="p-4 rounded-2xl bg-[#FFFBEB] border border-[#F5E0A3] flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-[#B47B00] shrink-0 mt-0.5" />
+                <div className="space-y-1 text-xs">
+                  <p className="font-bold text-[#6B4A00]">
+                    Modo Vercel temporal (/tmp) — configura almacenamiento permanente
+                  </p>
+                  <p className="text-[#7D5B12] leading-relaxed">
+                    En Vercel las funciones serverless reinician <span className="font-mono">/tmp</span> al actualizar o hibernar. Para que tus asistencias nunca se pierdan en la nube, agrega en Vercel las variables de <strong>OneDrive/SharePoint (MS_*)</strong> o de <strong>Upstash Redis (UPSTASH_REDIS_REST_URL y UPSTASH_REDIS_REST_TOKEN)</strong>.
+                  </p>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="p-4 rounded-2xl bg-[#F4FBF7] border border-[#CBEEDF] flex items-start gap-3">
+                <CheckCircle2 className="w-5 h-5 text-[#0F7A53] shrink-0 mt-0.5" />
+                <div className="space-y-1 text-xs">
+                  <p className="font-bold text-[#0F533B]">
+                    {data.persistence?.mode === 'graph-excel'
+                      ? 'Persistencia permanente activa en OneDrive / SharePoint'
+                      : data.persistence?.mode === 'upstash-kv'
+                        ? 'Persistencia permanente en nube activa (Upstash Redis) + Excel'
+                        : 'Base de datos Excel permanente activa en servidor'}
+                  </p>
+                  <p className="text-[#2B6650] leading-relaxed">
+                    Cada registro se guarda inmediatamente en el libro estructurado{' '}
+                    <span className="font-mono">{data.excelMetadata.filename}</span> (sin usar almacenamiento temporal del navegador) y persiste entre sesiones y dispositivos.
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div
               className={`p-4 rounded-2xl border flex items-start gap-3 ${

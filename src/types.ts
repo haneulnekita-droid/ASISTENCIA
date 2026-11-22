@@ -78,6 +78,11 @@ export interface PulseStats {
   };
 }
 
+export interface PersistenceSummary {
+  isVercel: boolean;
+  mode: 'graph-excel' | 'upstash-kv' | 'local-file' | 'vercel-tmp';
+}
+
 export interface AdminDashboardResponse {
   clock: ServerClock;
   stats: {
@@ -98,6 +103,7 @@ export interface AdminDashboardResponse {
     tableName: string;
   };
   graphStatus: GraphStatus;
+  persistence?: PersistenceSummary;
 }
 
 export interface AuthStatusResponse {

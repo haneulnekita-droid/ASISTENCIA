@@ -177,6 +177,59 @@ export async function appendRecordToGraphTable(record: AttendanceRecord): Promis
   }
 }
 
+export async function fetchRecordsFromGraphTable(): Promise<AttendanceRecord[] | null> {
+  const env = getGraphEnv();
+  if (!env.configured) {
+    return null;
+  }
+
+  try {
+    const token = await acquireGraphToken();
+    const url = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(env.driveId)}/items/${encodeURIComponent(env.itemId)}/workbook/tables/${encodeURIComponent(env.tableName)}/rows`;
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = (await response.json()) as {
+      value?: Array<{ values?: unknown[][] }>;
+    };
+
+    const records: AttendanceRecord[] = [];
+    for (const row of payload.value || []) {
+      const cols = row.values?.[0];
+      if (!Array.isArray(cols)) continue;
+      const id = String(cols[0] ?? '').trim();
+      const codigo = String(cols[1] ?? '').trim();
+      if (!id || !codigo) continue;
+      records.push({
+        id,
+        codigo,
+        nombres: String(cols[2] ?? '').trim(),
+        apellidos: String(cols[3] ?? '').trim(),
+        fecha: String(cols[4] ?? '').trim(),
+        hora: String(cols[5] ?? '').trim(),
+        jornada: String(cols[6] ?? '').trim(),
+        estado: String(cols[7] ?? 'Asistió').trim() || 'Asistió',
+        createdAt: String(cols[8] ?? '').trim(),
+      });
+    }
+
+    runtimeState.lastSyncOk = true;
+    runtimeState.lastSyncError = null;
+    runtimeState.lastSyncAt = new Date().toISOString();
+    return records;
+  } catch (err) {
+    runtimeState.lastSyncOk = false;
+    runtimeState.lastSyncError =
+      err instanceof Error ? err.message : 'Error al leer tabla desde OneDrive/SharePoint.';
+    return null;
+  }
+}
+
 export async function uploadWorkbookToGraph(buffer: Buffer): Promise<{ ok: boolean; message: string }> {
   const env = getGraphEnv();
   if (!env.configured) {
