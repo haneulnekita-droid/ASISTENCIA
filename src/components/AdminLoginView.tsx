@@ -1,64 +1,53 @@
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
 import { motion } from 'motion/react';
-import { Eye, EyeOff, KeyRound, ShieldCheck } from 'lucide-react';
-import { loginAdmin, setupFirstRunAdmin } from '../api';
-import type { AuthStatusResponse } from '../types';
+import { signInWithPopup, signOut, type User } from 'firebase/auth';
+import { AlertCircle, LogIn, LogOut, ShieldCheck } from 'lucide-react';
+import { auth, googleProvider, PRIMARY_ADMIN_EMAIL } from '../firebase';
 import { ImageWithFallback } from './ImageWithFallback';
 import { CEREBRO_ESCENA_IMG, CEREBRO_ZEN_IMG } from './MascotGuide';
 
 interface AdminLoginViewProps {
-  authStatus: AuthStatusResponse;
-  onAuthenticated: (token: string, username: string) => void;
+  currentUser: User | null;
+  unauthorizedEmail: string | null;
 }
 
-export function AdminLoginView({ authStatus, onAuthenticated }: AdminLoginViewProps) {
-  const isSetupMode = !authStatus.initialized;
-  const [username, setUsername] = useState(authStatus.usernameHint || 'facilitadora');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+export function AdminLoginView({ currentUser, unauthorizedEmail }: AdminLoginViewProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [unauthorizedDomainHost, setUnauthorizedDomainHost] = useState<string | null>(null);
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const handleGoogleSignIn = async () => {
     setError(null);
-
-    if (username.trim().length < 3) {
-      setError('Ingresa un nombre de usuario válido (mínimo 3 caracteres).');
-      return;
-    }
-
-    if (isSetupMode) {
-      if (password.length < 6) {
-        setError('La contraseña debe tener al menos 6 caracteres.');
-        return;
-      }
-      setSubmitting(true);
-      try {
-        const res = await setupFirstRunAdmin(username.trim(), password);
-        onAuthenticated(res.token, res.username);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'No se pudo completar el registro inicial.');
-      } finally {
-        setSubmitting(false);
-      }
-      return;
-    }
-
-    if (!password) {
-      setError('Ingresa tu contraseña.');
-      return;
-    }
-
+    setUnauthorizedDomainHost(null);
     setSubmitting(true);
     try {
-      const res = await loginAdmin(username.trim(), password);
-      onAuthenticated(res.token, res.username);
+      await signInWithPopup(auth, googleProvider);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Usuario o contraseña incorrectos.');
+      const code = (err as { code?: string })?.code || '';
+      if (code === 'auth/popup-closed-by-user') {
+        setError('Cerraste la ventana de Google antes de completar el ingreso. Intenta de nuevo.');
+      } else if (code === 'auth/popup-blocked') {
+        setError(
+          'Tu navegador bloqueó la ventana emergente de Google. Permite las ventanas emergentes para este sitio e intenta nuevamente.'
+        );
+      } else if (code === 'auth/unauthorized-domain') {
+        const host = typeof window !== 'undefined' ? window.location.hostname : '';
+        setUnauthorizedDomainHost(host);
+        setError(
+          `Este dominio (${host}) aún no está autorizado en Firebase Authentication. Agrégalo en Firebase Console → Authentication → Settings → Authorized domains.`
+        );
+      } else {
+        setError('No se pudo iniciar sesión con Google. Verifica tu conexión e intenta nuevamente.');
+      }
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleSwitchAccount = async () => {
+    setError(null);
+    await signOut(auth);
+    await handleGoogleSignIn();
   };
 
   return (
@@ -92,110 +81,77 @@ export function AdminLoginView({ authStatus, onAuthenticated }: AdminLoginViewPr
                     />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-[#FDE68A]">Privacidad y protección</p>
-                    <p className="text-sm font-bold text-white">Espacio exclusivo para facilitadoras</p>
+                    <p className="text-xs font-bold text-[#FDE68A]">Sincronizado en tiempo real</p>
+                    <p className="text-sm font-bold text-white">Acceso desde cualquier dispositivo</p>
                   </div>
                 </div>
                 <p className="text-xs text-[#EDE8FF] leading-relaxed">
-                  Aquí podrás revisar el pulso emocional del semestre, consultar asistencias por fecha y descargar los reportes en Excel.
+                  Al ingresar con tu cuenta de Google autorizada verás en vivo todas las asistencias enviadas desde cualquier celular, sin importar el dispositivo desde donde abras el panel.
                 </p>
               </div>
             </div>
 
-            <div className="lg:col-span-6 p-6 sm:p-10 flex flex-col justify-center">
-              <div className="space-y-2 mb-6">
+            <div className="lg:col-span-6 p-6 sm:p-10 flex flex-col justify-center space-y-6">
+              <div className="space-y-2">
                 <div className="inline-flex items-center gap-2 text-xs font-semibold text-[#5B3FD9]">
-                  {isSetupMode ? <KeyRound className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
-                  <span>
-                    {isSetupMode
-                      ? 'Configuración inicial rápida'
-                      : 'Acceso privado para facilitadoras'}
-                  </span>
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>Panel privado para facilitadoras</span>
                 </div>
                 <h1 className="text-2xl sm:text-3xl font-bold text-[#241B35] text-balance">
-                  {isSetupMode ? 'Crea tu clave de facilitadora' : 'Inicia sesión en el panel'}
+                  Ingresa con 1 clic con Google
                 </h1>
                 <p className="text-sm text-[#5A4E73] leading-relaxed">
-                  {isSetupMode
-                    ? 'Define tu usuario y contraseña (mínimo 6 caracteres) para ingresar de inmediato al panel y al historial.'
-                    : 'Ingresa tus credenciales para ver estadísticas, historial completo y descargar los registros en Excel.'}
+                  Sin contraseñas que recordar ni bloqueos entre dispositivos. Inicia sesión con tu cuenta autorizada (<span className="font-mono text-xs font-semibold text-[#3E2A8A]">{PRIMARY_ADMIN_EMAIL}</span>) para abrir el Panel y el Historial desde cualquier celular o computadora.
                 </p>
               </div>
 
-              {error && (
-                <div className="mb-5 p-4 rounded-2xl bg-[#FEF2F2] border border-[#FECACA] text-[#991B1B] text-sm">
-                  {error}
+              {currentUser && unauthorizedEmail && (
+                <div className="p-4 rounded-2xl bg-[#FFFBEB] border-2 border-[#F5E0A3] text-[#6B4A00] text-xs space-y-2">
+                  <div className="flex items-start gap-2 font-bold text-sm">
+                    <AlertCircle className="w-4 h-4 text-[#B47B00] shrink-0 mt-0.5" />
+                    <span>Cuenta sin permisos de facilitadora</span>
+                  </div>
+                  <p>
+                    Iniciaste sesión como <span className="font-mono font-semibold">{unauthorizedEmail}</span>. Por privacidad de los estudiantes, solo la cuenta autorizada (<span className="font-mono">{PRIMARY_ADMIN_EMAIL}</span>) o co-facilitadoras agregadas pueden ver el Panel y el Historial.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => void handleSwitchAccount()}
+                    className="min-h-[40px] px-4 py-2 rounded-xl bg-[#5B3FD9] text-white font-semibold inline-flex items-center gap-2 cursor-pointer"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Cambiar de cuenta de Google</span>
+                  </button>
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label htmlFor="admin-user" className="block text-sm font-semibold text-[#241B35] mb-1.5">
-                    Usuario
-                  </label>
-                  <input
-                    id="admin-user"
-                    type="text"
-                    autoComplete="username"
-                    required
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="w-full min-h-[48px] px-4 py-2.5 rounded-xl bg-[#F8F5FF] border border-[#D4C7F2] text-[#241B35] focus:outline-none focus:ring-2 focus:ring-[#5B3FD9]"
-                  />
+              {error && (
+                <div className="p-4 rounded-2xl bg-[#FEF2F2] border border-[#FECACA] text-[#991B1B] text-sm space-y-2">
+                  <p>{error}</p>
+                  {unauthorizedDomainHost && (
+                    <p className="text-xs font-mono bg-white/80 p-2 rounded-lg border border-[#FECACA]">
+                      Dominio a agregar: {unauthorizedDomainHost}
+                    </p>
+                  )}
                 </div>
+              )}
 
-                <div>
-                  <label htmlFor="admin-pass" className="block text-sm font-semibold text-[#241B35] mb-1.5">
-                    Contraseña
-                  </label>
-                  <div className="relative">
-                    <input
-                      id="admin-pass"
-                      type={showPassword ? 'text' : 'password'}
-                      autoComplete={isSetupMode ? 'new-password' : 'current-password'}
-                      required
-                      placeholder={isSetupMode ? 'Mínimo 6 caracteres' : 'Ingresa tu contraseña'}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="w-full min-h-[48px] pl-4 pr-12 py-2.5 rounded-xl bg-[#F8F5FF] border border-[#D4C7F2] text-[#241B35] focus:outline-none focus:ring-2 focus:ring-[#5B3FD9]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((prev) => !prev)}
-                      aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 min-w-[40px] min-h-[40px] flex items-center justify-center text-[#6B5F84] hover:text-[#241B35] cursor-pointer"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                {isSetupMode ? (
-                  <p className="text-xs text-[#5A4E73]">
-                    Usa una contraseña de al menos 6 caracteres. Para usar una clave fija en Vercel, configura{' '}
-                    <span className="font-mono">ADMIN_USERNAME</span> y{' '}
-                    <span className="font-mono">ADMIN_PASSWORD</span> en sus variables de entorno.
-                  </p>
-                ) : !authStatus.envConfigured ? (
-                  <p className="text-xs text-[#5A4E73]">
-                    ¿Necesitas definir o cambiar una clave fija? Configura{' '}
-                    <span className="font-mono">ADMIN_USERNAME</span> y{' '}
-                    <span className="font-mono">ADMIN_PASSWORD</span> en Secrets o en Vercel.
-                  </p>
-                ) : null}
-
+              <div className="space-y-3">
                 <button
-                  type="submit"
+                  type="button"
                   disabled={submitting}
-                  className="w-full min-h-[52px] mt-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-[#5B3FD9] to-[#6D4AFF] hover:from-[#4C31C7] hover:to-[#4C31C7] disabled:opacity-60 text-white font-bold text-sm shadow-[0_10px_22px_-8px_rgba(91,63,217,0.45)] transition-all cursor-pointer"
+                  onClick={() => void handleGoogleSignIn()}
+                  className="w-full min-h-[54px] px-6 py-3.5 rounded-2xl bg-gradient-to-r from-[#5B3FD9] to-[#6D4AFF] hover:from-[#4C31C7] hover:to-[#4C31C7] disabled:opacity-60 text-white font-bold text-sm shadow-[0_12px_24px_-8px_rgba(91,63,217,0.48)] inline-flex items-center justify-center gap-2.5 transition-all cursor-pointer"
                 >
-                  {submitting
-                    ? 'Ingresando...'
-                    : isSetupMode
-                      ? 'Guardar acceso y entrar ahora'
-                      : 'Ingresar al panel administrativo'}
+                  <LogIn className="w-5 h-5" />
+                  <span>
+                    {submitting
+                      ? 'Conectando con Google...'
+                      : 'Ingresar con Google (Panel e Historial)'}
+                  </span>
                 </button>
-              </form>
+              </div>
             </div>
           </div>
         </motion.div>

@@ -1,0 +1,249 @@
+{
+  "entities": {
+    "AdminUser": {
+      "title": "AdminUser",
+      "description": "Authorized facilitator profile granting access to the administrative dashboard and attendance history.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the authorized facilitator.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Email address of the facilitator.",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name of the facilitator.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when admin access was granted."
+        }
+      },
+      "required": ["uid", "email", "createdAt"]
+    },
+    "WorkshopConfig": {
+      "title": "WorkshopConfig",
+      "description": "Global workshop session settings synchronized across all devices.",
+      "type": "object",
+      "properties": {
+        "workshopTitle": {
+          "type": "string",
+          "description": "Official title of the stress management evaluation workshop.",
+          "minLength": 3,
+          "maxLength": 200
+        },
+        "cycleLabel": {
+          "type": "string",
+          "description": "Target student cohort label.",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "activeJornada": {
+          "type": "string",
+          "description": "Currently active session tagged onto new attendance submissions.",
+          "minLength": 3,
+          "maxLength": 140
+        },
+        "allowParticipantSessionSelect": {
+          "type": "boolean",
+          "description": "Whether participants select session manually."
+        },
+        "jornadas": {
+          "type": "array",
+          "description": "Configured workshop session names."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the last configuration update."
+        }
+      },
+      "required": ["workshopTitle", "cycleLabel", "activeJornada", "allowParticipantSessionSelect", "jornadas", "updatedAt"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "Immutable student attendance record keyed atomically by student code, date, and session.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique attendance receipt identifier.",
+          "minLength": 3,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "codigo": {
+          "type": "string",
+          "description": "Student code or identifier.",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "nombres": {
+          "type": "string",
+          "description": "Student first names.",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "apellidos": {
+          "type": "string",
+          "description": "Student last names.",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "fecha": {
+          "type": "string",
+          "description": "Attendance date in YYYY-MM-DD format.",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "hora": {
+          "type": "string",
+          "description": "Registration time in HH:mm:ss format.",
+          "minLength": 8,
+          "maxLength": 8,
+          "pattern": "^\\d{2}:\\d{2}:\\d{2}$"
+        },
+        "jornada": {
+          "type": "string",
+          "description": "Session name tagged automatically.",
+          "minLength": 3,
+          "maxLength": 140
+        },
+        "estado": {
+          "type": "string",
+          "enum": ["Asistió"],
+          "description": "Attendance status."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the attendance record was created."
+        }
+      },
+      "required": ["id", "codigo", "nombres", "apellidos", "fecha", "hora", "jornada", "estado", "createdAt"]
+    },
+    "DuplicateAttempt": {
+      "title": "DuplicateAttempt",
+      "description": "Audit log entry created when a duplicate submission for the same student, date, and session is blocked.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique duplicate attempt identifier.",
+          "minLength": 3,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "codigo": {
+          "type": "string",
+          "description": "Submitted student code.",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "nombresIngresados": {
+          "type": "string",
+          "description": "Submitted first names.",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "apellidosIngresados": {
+          "type": "string",
+          "description": "Submitted last names.",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "jornada": {
+          "type": "string",
+          "description": "Session name.",
+          "minLength": 3,
+          "maxLength": 140
+        },
+        "fecha": {
+          "type": "string",
+          "description": "Date of duplicate attempt.",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "horaIntento": {
+          "type": "string",
+          "description": "Time of duplicate attempt.",
+          "minLength": 8,
+          "maxLength": 8,
+          "pattern": "^\\d{2}:\\d{2}:\\d{2}$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the duplicate attempt."
+        }
+      },
+      "required": ["id", "codigo", "nombresIngresados", "apellidosIngresados", "jornada", "fecha", "horaIntento", "createdAt"]
+    },
+    "PulseResponse": {
+      "title": "PulseResponse",
+      "description": "Anonymous student semester stress check-in response stored independently to prevent write contention.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique pulse response ID.",
+          "minLength": 3,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "semesterTrend": {
+          "type": "string",
+          "enum": ["subioMucho", "porMomentos", "masTranquilo"],
+          "description": "Perception of stress progression during the semester."
+        },
+        "mochilaPeso": {
+          "type": "string",
+          "enum": ["examenesTrabajos", "cansancioSueno", "practicasHorarios", "bajoControl"],
+          "description": "Main emotional weight carried today."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the anonymous pulse response."
+        }
+      },
+      "required": ["id", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/admins/{adminUid}": {
+      "schema": { "$ref": "#/entities/AdminUser" },
+      "description": "Authorized facilitator accounts."
+    },
+    "/config/{configId}": {
+      "schema": { "$ref": "#/entities/WorkshopConfig" },
+      "description": "Global workshop configuration document ('workshop')."
+    },
+    "/attendance_records/{recordId}": {
+      "schema": { "$ref": "#/entities/AttendanceRecord" },
+      "description": "Immutable student attendance records accessible only to facilitators for reading."
+    },
+    "/duplicate_attempts/{attemptId}": {
+      "schema": { "$ref": "#/entities/DuplicateAttempt" },
+      "description": "Audit log of blocked duplicate attendance attempts."
+    },
+    "/pulse_responses/{responseId}": {
+      "schema": { "$ref": "#/entities/PulseResponse" },
+      "description": "Anonymous semester stress pulse responses."
+    }
+  }
+}

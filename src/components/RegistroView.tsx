@@ -16,8 +16,14 @@ import {
   TrendingUp,
   UserCheck,
 } from 'lucide-react';
-import { ApiError, fetchPublicInfo, submitAttendance } from '../api';
-import type { AttendanceRecord, PublicInfoResponse, PulseStats } from '../types';
+import { fetchPublicInfo } from '../api';
+import {
+  DEFAULT_WORKSHOP_CONFIG,
+  getLimaClockSnapshot,
+  getPublicWorkshopConfig,
+  submitAttendanceToFirestore,
+} from '../services/firestoreAttendance';
+import type { AttendanceRecord, PublicInfoResponse } from '../types';
 import { ImageWithFallback } from './ImageWithFallback';
 import {
   CEREBRO_ESCENA_IMG,
@@ -134,24 +140,35 @@ export function RegistroView() {
   } | null>(null);
   const [savedRecord, setSavedRecord] = useState<AttendanceRecord | null>(null);
   const [successMessage, setSuccessMessage] = useState<string>('');
-  const [groupPulse, setGroupPulse] = useState<PulseStats | null>(null);
 
   const loadInfo = async () => {
     try {
       setLoadError(null);
-      const data = await fetchPublicInfo();
-      setInfo(data);
-      const serverMs = new Date(data.clock.iso).getTime();
+      const [serverResult, cloudConfig] = await Promise.allSettled([
+        fetchPublicInfo(),
+        getPublicWorkshopConfig(),
+      ]);
+
+      const serverInfo = serverResult.status === 'fulfilled' ? serverResult.value : null;
+      const clock = serverInfo ? serverInfo.clock : getLimaClockSnapshot();
+      const config = cloudConfig.status === 'fulfilled' ? cloudConfig.value : (serverInfo?.config || DEFAULT_WORKSHOP_CONFIG);
+
+      setInfo({
+        clock,
+        config,
+        publicAppUrl: serverInfo?.publicAppUrl || null,
+      });
+      const serverMs = new Date(clock.iso).getTime();
       const offset = Number.isFinite(serverMs) ? serverMs - Date.now() : 0;
       setClockOffsetMs(offset);
       setDisplayClock({
-        fechaLegible: data.clock.fechaLegible,
-        hora: data.clock.hora,
+        fechaLegible: clock.fechaLegible,
+        hora: clock.hora,
       });
     } catch {
-      setLoadError(
-        'No se pudo conectar con el servidor de asistencia. Verifica tu conexión e intenta de nuevo.'
-      );
+      const clock = getLimaClockSnapshot();
+      setInfo({ clock, config: DEFAULT_WORKSHOP_CONFIG, publicAppUrl: null });
+      setDisplayClock({ fechaLegible: clock.fechaLegible, hora: clock.hora });
     }
   };
 
@@ -160,8 +177,7 @@ export function RegistroView() {
   }, []);
 
   useEffect(() => {
-    if (!info) return;
-    const tz = info.clock.timezone || 'America/Lima';
+    const tz = info?.clock.timezone || 'America/Lima';
     const interval = setInterval(() => {
       setDisplayClock(formatLiveTimeFromOffset(clockOffsetMs, tz));
     }, 1000);
@@ -188,34 +204,37 @@ export function RegistroView() {
 
     setSubmitting(true);
     try {
-      const response = await submitAttendance({
+      const response = await submitAttendanceToFirestore({
         nombres: nombres.trim(),
         apellidos: apellidos.trim(),
         codigo: codigo.trim(),
         semesterTrend: semesterTrend || undefined,
         mochilaPeso: mochilaPeso || undefined,
       });
-      setSavedRecord(response.record);
-      setSuccessMessage(response.message);
-      setGroupPulse(response.pulseStats || null);
-      setNombres('');
-      setApellidos('');
-      setCodigo('');
-      setSemesterTrend('');
-      setMochilaPeso('');
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 409 && err.payload?.duplicate) {
+
+      if (!response.ok && response.duplicate) {
         setDuplicateNotice({
-          message: err.message,
-          hora: String(err.payload.existingHora || ''),
-          fecha: String(err.payload.existingFecha || ''),
-          jornada: String(err.payload.jornada || ''),
+          message: response.message,
+          hora: '',
+          fecha: response.fecha,
+          jornada: response.jornada,
         });
-      } else {
-        setFormError(
-          err instanceof Error ? err.message : 'Ocurrió un error al registrar tu asistencia.'
-        );
+        return;
       }
+
+      if (response.ok) {
+        setSavedRecord(response.record);
+        setSuccessMessage(response.message);
+        setNombres('');
+        setApellidos('');
+        setCodigo('');
+        setSemesterTrend('');
+        setMochilaPeso('');
+      }
+    } catch (err) {
+      setFormError(
+        err instanceof Error ? err.message : 'Ocurrió un error al registrar tu asistencia.'
+      );
     } finally {
       setSubmitting(false);
     }
@@ -224,7 +243,6 @@ export function RegistroView() {
   const resetForNext = () => {
     setSavedRecord(null);
     setSuccessMessage('');
-    setGroupPulse(null);
     setFormError(null);
     setDuplicateNotice(null);
     void loadInfo();
@@ -238,20 +256,6 @@ export function RegistroView() {
 
   const selectedTrendObj = SEMESTER_TREND_OPTIONS.find((o) => o.id === semesterTrend);
   const customReaction = selectedTrendObj ? selectedTrendObj.reaction : null;
-
-  const totalTrendCount = groupPulse
-    ? groupPulse.semesterTrend.subioMucho +
-      groupPulse.semesterTrend.porMomentos +
-      groupPulse.semesterTrend.masTranquilo
-    : 0;
-  const rollerPct =
-    totalTrendCount > 0 && groupPulse
-      ? Math.round(
-          ((groupPulse.semesterTrend.subioMucho + groupPulse.semesterTrend.porMomentos) /
-            totalTrendCount) *
-            100
-        )
-      : null;
 
   return (
     <section className="relative overflow-hidden bg-gradient-to-b from-[#EDE4FF] via-[#FAF8F5] to-[#E6FAF0] py-6 sm:py-10">
@@ -391,19 +395,16 @@ export function RegistroView() {
                     <div className="max-w-lg space-y-2">
                       <div className="inline-flex items-center gap-2 text-sm font-bold text-[#0F7A53]">
                         <CheckCircle2 className="w-5 h-5" />
-                        <span>Registro guardado en la base de datos Excel</span>
+                        <span>Registro guardado en la nube en tiempo real</span>
                       </div>
                       <h2 className="text-2xl sm:text-3xl font-bold text-[#241B35] text-balance">
                         {successMessage}
                       </h2>
                     </div>
 
-                    {rollerPct !== null && (
-                      <div className="w-full max-w-md rounded-2xl bg-[#F5F1FE] border border-[#DDD2FA] px-4 py-3 text-xs text-[#3C2B70]">
-                        <span className="font-bold">Pulso del V ciclo hoy:</span> El{' '}
-                        <span className="font-mono font-bold text-[#5B3FD9]">{rollerPct}%</span> de tus compañeros también sintió subidas de estrés este semestre. ¡Hoy soltamos la mochila juntos!
-                      </div>
-                    )}
+                    <div className="w-full max-w-md rounded-2xl bg-[#F5F1FE] border border-[#DDD2FA] px-4 py-3 text-xs text-[#3C2B70]">
+                      <span className="font-bold">¡Huella registrada!</span> Tu asistencia ya aparece en el panel de facilitadoras. ¡Hoy soltamos la mochila juntos!
+                    </div>
 
                     <div className="w-full max-w-md bg-gradient-to-br from-[#F2FCF7] via-white to-[#F7F3FF] border-2 border-[#BFE8D4] rounded-2xl p-5 text-left space-y-3">
                       <div className="flex items-center justify-between gap-4 text-xs text-[#3C6252] border-b border-[#DCEEE5] pb-2.5">

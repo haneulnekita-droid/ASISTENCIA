@@ -14,18 +14,13 @@ import {
   TrendingUp,
   Users,
 } from 'lucide-react';
-import {
-  downloadExcelExport,
-  syncGraphWorkbook,
-  testGraphConnection,
-  updateAdminConfig,
-} from '../api';
+import { updateFirestoreWorkshopConfig } from '../services/firestoreAttendance';
 import type { AdminDashboardResponse } from '../types';
+import { exportRecordsToExcelFile } from '../utils/excelExport';
 import { ImageWithFallback } from './ImageWithFallback';
 import { CEREBRO_ZEN_IMG } from './MascotGuide';
 
 interface AdminDashboardViewProps {
-  token: string;
   username: string;
   data: AdminDashboardResponse;
   onRefresh: () => Promise<void>;
@@ -38,7 +33,6 @@ function pct(value: number, total: number): number {
 }
 
 export function AdminDashboardView({
-  token,
   username,
   data,
   onRefresh,
@@ -51,9 +45,6 @@ export function AdminDashboardView({
   const [configFeedback, setConfigFeedback] = useState<string | null>(null);
   const [exporting, setExporting] = useState<boolean>(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [graphMessage, setGraphMessage] = useState<{ ok: boolean; text: string } | null>(null);
-  const [graphBusy, setGraphBusy] = useState<boolean>(false);
-  const [showGraphGuide, setShowGraphGuide] = useState<boolean>(!data.graphStatus.configured);
 
   const filteredRecords = data.records
     .filter((r) => {
@@ -72,9 +63,8 @@ export function AdminDashboardView({
     setSavingConfig(true);
     setConfigFeedback(null);
     try {
-      await updateAdminConfig(token, { activeJornada: jornada });
-      await onRefresh();
-      setConfigFeedback('Sesión activa actualizada para el registro en Excel.');
+      await updateFirestoreWorkshopConfig(data.config, { activeJornada: jornada });
+      setConfigFeedback('Sesión activa actualizada en la nube para todos los celulares.');
     } catch (err) {
       setConfigFeedback(err instanceof Error ? err.message : 'Error al actualizar sesión.');
     } finally {
@@ -89,13 +79,12 @@ export function AdminDashboardView({
     setConfigFeedback(null);
     try {
       const nextList = Array.from(new Set([...data.config.jornadas, clean]));
-      await updateAdminConfig(token, {
+      await updateFirestoreWorkshopConfig(data.config, {
         jornadas: nextList,
         activeJornada: clean,
       });
       setNewJornada('');
-      await onRefresh();
-      setConfigFeedback(`Jornada "${clean}" agregada y activada.`);
+      setConfigFeedback(`Jornada "${clean}" agregada y activada en la nube.`);
     } catch (err) {
       setConfigFeedback(err instanceof Error ? err.message : 'No se pudo agregar la jornada.');
     } finally {
@@ -107,7 +96,7 @@ export function AdminDashboardView({
     setExporting(true);
     setActionError(null);
     try {
-      await downloadExcelExport(token);
+      await exportRecordsToExcelFile(data.records);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'No se pudo descargar el archivo Excel.');
     } finally {
@@ -119,45 +108,12 @@ export function AdminDashboardView({
     setExporting(true);
     setActionError(null);
     try {
-      await downloadExcelExport(token, { date: fecha });
+      const dayRecords = data.records.filter((r) => r.fecha === fecha);
+      await exportRecordsToExcelFile(dayRecords, fecha);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'No se pudo descargar el Excel del día.');
     } finally {
       setExporting(false);
-    }
-  };
-
-  const handleTestGraph = async () => {
-    setGraphBusy(true);
-    setGraphMessage(null);
-    try {
-      const res = await testGraphConnection(token);
-      setGraphMessage({ ok: res.ok, text: res.message });
-      await onRefresh();
-    } catch (err) {
-      setGraphMessage({
-        ok: false,
-        text: err instanceof Error ? err.message : 'Error al probar conexión con OneDrive/SharePoint.',
-      });
-    } finally {
-      setGraphBusy(false);
-    }
-  };
-
-  const handleSyncGraph = async () => {
-    setGraphBusy(true);
-    setGraphMessage(null);
-    try {
-      const res = await syncGraphWorkbook(token);
-      setGraphMessage({ ok: res.ok, text: res.message });
-      await onRefresh();
-    } catch (err) {
-      setGraphMessage({
-        ok: false,
-        text: err instanceof Error ? err.message : 'Error al sincronizar el archivo Excel en la nube.',
-      });
-    } finally {
-      setGraphBusy(false);
     }
   };
 
@@ -195,7 +151,7 @@ export function AdminDashboardView({
             </div>
             <div>
               <p className="text-xs font-semibold text-[#FDE68A]">
-                Panel privado · Facilitadora: {username} · Hoy: {data.clock.fecha}
+                Panel en tiempo real · Facilitadora: {username} · Hoy: {data.clock.fecha}
               </p>
               <h1 className="text-2xl sm:text-3xl font-bold text-white mt-0.5">
                 Control de Asistencias y Pulso Emocional
@@ -242,7 +198,7 @@ export function AdminDashboardView({
               <p className="text-3xl font-bold text-[#241B35] mt-2 font-mono tabular-nums">
                 {data.stats.totalRegistrados}
               </p>
-              <p className="text-xs text-[#6B5F84] mt-1">Asistencias acumuladas</p>
+              <p className="text-xs text-[#6B5F84] mt-1">Asistencias acumuladas en la nube</p>
             </div>
           </div>
 
@@ -290,7 +246,7 @@ export function AdminDashboardView({
           </div>
         </div>
 
-        {/* Radiografía Emocional del Semestre (from the 2 curious questions!) */}
+        {/* Radiografía Emocional del Semestre */}
         <div className="bg-white rounded-[2rem] border-2 border-[#DECFFA] overflow-hidden shadow-[0_12px_30px_-14px_rgba(91,63,217,0.14)]">
           <div className="h-2 bg-gradient-to-r from-[#6D4AFF] via-[#FBBF24] to-[#10B981]" />
           <div className="p-6 space-y-5">
@@ -400,7 +356,7 @@ export function AdminDashboardView({
 
         {/* Session configuration + Daily summary split */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Configure Active Jornada (internal Excel tagging) */}
+          {/* Configure Active Jornada */}
           <div className="lg:col-span-5 bg-white rounded-[2rem] border-2 border-[#DECFFA] p-6 space-y-5">
             <div className="flex items-center gap-2 text-sm font-bold text-[#241B35]">
               <Settings2 className="w-4 h-4 text-[#5B3FD9]" />
@@ -470,7 +426,7 @@ export function AdminDashboardView({
 
             {data.dailyBreakdown.length === 0 ? (
               <div className="py-10 text-center text-sm text-[#6B5F84]">
-                Aún no hay asistencias registradas. Cuando los estudiantes escaneen el código QR aparecerán aquí agrupados por fecha.
+                Aún no hay asistencias registradas. Cuando los estudiantes escaneen el código QR aparecerán aquí agrupados por fecha en tiempo real.
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -631,7 +587,7 @@ export function AdminDashboardView({
                     <th className="py-2.5 pr-4 font-semibold">Código</th>
                     <th className="py-2.5 pr-4 font-semibold">Datos ingresados</th>
                     <th className="py-2.5 pr-4 font-semibold">Sesión</th>
-                    <th className="py-2.5 pr-4 font-semibold">Registro original</th>
+                    <th className="py-2.5 pr-4 font-semibold">Fecha original</th>
                     <th className="py-2.5 font-semibold">Intento repetido</th>
                   </tr>
                 </thead>
@@ -646,7 +602,7 @@ export function AdminDashboardView({
                       </td>
                       <td className="py-3 pr-4 text-xs text-[#5A4E73]">{dup.jornada}</td>
                       <td className="py-3 pr-4 font-mono text-xs text-[#0F7A53] tabular-nums whitespace-nowrap">
-                        {dup.originalFecha} {dup.originalHora}
+                        {dup.originalFecha}
                       </td>
                       <td className="py-3 font-mono text-xs text-[#9A5B00] tabular-nums whitespace-nowrap">
                         {dup.fecha} {dup.horaIntento}
@@ -659,13 +615,13 @@ export function AdminDashboardView({
           )}
         </div>
 
-        {/* Excel Database & Microsoft Graph OneDrive / SharePoint Connection */}
+        {/* Cloud Firestore Multi-Device Sync & Excel Export */}
         <div className="bg-white rounded-[2rem] border-2 border-[#BFE8D4] p-6 space-y-5">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="space-y-1">
               <div className="flex items-center gap-2 text-base font-bold text-[#241B35]">
                 <FileSpreadsheet className="w-5 h-5 text-[#0D9464]" />
-                <h2>Base de Datos Excel y Conexión OneDrive / SharePoint</h2>
+                <h2>Sincronización Multi-Dispositivo en la Nube y Reporte Excel</h2>
               </div>
               <p className="text-xs text-[#5A4E73] font-mono">
                 Archivo: {data.excelMetadata.filename} · Hoja: {data.excelMetadata.worksheetName} · Tabla:{' '}
@@ -673,144 +629,43 @@ export function AdminDashboardView({
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2.5">
-              <button
-                type="button"
-                disabled={graphBusy}
-                onClick={() => void handleTestGraph()}
-                className="min-h-[42px] px-4 py-2 rounded-xl bg-[#EFEAFD] hover:bg-[#E2D9FA] disabled:opacity-60 text-[#3E2A8A] text-xs font-semibold inline-flex items-center gap-2 cursor-pointer"
-              >
-                <Cloud className="w-4 h-4" />
-                <span>Probar OneDrive / SharePoint</span>
-              </button>
-
-              <button
-                type="button"
-                disabled={graphBusy || !data.graphStatus.configured}
-                onClick={() => void handleSyncGraph()}
-                className="min-h-[42px] px-4 py-2 rounded-xl bg-[#EAF9F2] hover:bg-[#D5F3E5] disabled:opacity-50 text-[#135D41] text-xs font-semibold inline-flex items-center gap-2 cursor-pointer border border-[#BFE8D4]"
-              >
-                <RefreshCw className="w-4 h-4" />
-                <span>Sincronizar Excel en la nube</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              disabled={exporting}
+              onClick={() => void handleExportAll()}
+              className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#EAF9F2] hover:bg-[#D5F3E5] disabled:opacity-50 text-[#135D41] text-xs font-bold inline-flex items-center gap-2 cursor-pointer border border-[#BFE8D4] shrink-0"
+            >
+              <Download className="w-4 h-4" />
+              <span>{exporting ? 'Generando Excel...' : 'Descargar Excel estructurado (.xlsx)'}</span>
+            </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {data.persistence?.mode === 'vercel-tmp' ? (
-              <div className="p-4 rounded-2xl bg-[#FFFBEB] border border-[#F5E0A3] flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-[#B47B00] shrink-0 mt-0.5" />
-                <div className="space-y-1 text-xs">
-                  <p className="font-bold text-[#6B4A00]">
-                    Modo Vercel temporal (/tmp) — configura almacenamiento permanente
-                  </p>
-                  <p className="text-[#7D5B12] leading-relaxed">
-                    En Vercel las funciones serverless reinician <span className="font-mono">/tmp</span> al actualizar o hibernar. Para que tus asistencias nunca se pierdan en la nube, agrega en Vercel las variables de <strong>OneDrive/SharePoint (MS_*)</strong> o de <strong>Upstash Redis (UPSTASH_REDIS_REST_URL y UPSTASH_REDIS_REST_TOKEN)</strong>.
-                  </p>
-                </div>
+            <div className="p-4 rounded-2xl bg-[#F4FBF7] border border-[#CBEEDF] flex items-start gap-3">
+              <CheckCircle2 className="w-5 h-5 text-[#0F7A53] shrink-0 mt-0.5" />
+              <div className="space-y-1 text-xs">
+                <p className="font-bold text-[#0F533B]">
+                  Base de datos en tiempo real activa (Cloud Firestore)
+                </p>
+                <p className="text-[#2B6650] leading-relaxed">
+                  Decenas de estudiantes pueden escanear el QR y registrar su asistencia al mismo tiempo desde distintos celulares. Cada registro es atómico, evita duplicados por código y aparece al instante en este Panel y en el Historial desde cualquier computadora o teléfono autorizado.
+                </p>
               </div>
-            ) : (
-              <div className="p-4 rounded-2xl bg-[#F4FBF7] border border-[#CBEEDF] flex items-start gap-3">
-                <CheckCircle2 className="w-5 h-5 text-[#0F7A53] shrink-0 mt-0.5" />
-                <div className="space-y-1 text-xs">
-                  <p className="font-bold text-[#0F533B]">
-                    {data.persistence?.mode === 'graph-excel'
-                      ? 'Persistencia permanente activa en OneDrive / SharePoint'
-                      : data.persistence?.mode === 'upstash-kv'
-                        ? 'Persistencia permanente en nube activa (Upstash Redis) + Excel'
-                        : 'Base de datos Excel permanente activa en servidor'}
-                  </p>
-                  <p className="text-[#2B6650] leading-relaxed">
-                    Cada registro se guarda inmediatamente en el libro estructurado{' '}
-                    <span className="font-mono">{data.excelMetadata.filename}</span> (sin usar almacenamiento temporal del navegador) y persiste entre sesiones y dispositivos.
-                  </p>
-                </div>
-              </div>
-            )}
+            </div>
 
-            <div
-              className={`p-4 rounded-2xl border flex items-start gap-3 ${
-                data.graphStatus.configured
-                  ? 'bg-[#F4F0FC] border-[#DCD4ED]'
-                  : 'bg-[#FEF9EC] border-[#F5E0A3]'
-              }`}
-            >
-              <Cloud
-                className={`w-5 h-5 shrink-0 mt-0.5 ${
-                  data.graphStatus.configured ? 'text-[#5B3FD9]' : 'text-[#B47B00]'
-                }`}
-              />
+            <div className="p-4 rounded-2xl bg-[#F4F0FC] border border-[#DCD4ED] flex items-start gap-3">
+              <Cloud className="w-5 h-5 shrink-0 mt-0.5 text-[#5B3FD9]" />
               <div className="space-y-1 text-xs">
                 <p className="font-bold text-[#241B35]">
-                  {data.graphStatus.configured
-                    ? 'Sincronización automática con Microsoft Graph configurada'
-                    : 'OneDrive / SharePoint requiere credenciales de Microsoft Graph'}
+                  Exportación Excel lista para OneDrive, SharePoint o Google Drive
                 </p>
                 <p className="text-[#5A4E73] leading-relaxed">
-                  {data.graphStatus.configured
-                    ? data.graphStatus.lastSyncAt
-                      ? `Última sincronización: ${data.graphStatus.lastSyncAt}`
-                      : 'Listo para sincronizar filas en tiempo real con la tabla en la nube.'
-                    : `Faltan variables de entorno: ${data.graphStatus.missingVars.join(', ')}.`}
+                  Al hacer clic en <strong>Descargar Excel completo</strong> obtienes al instante el archivo{' '}
+                  <span className="font-mono">{data.excelMetadata.filename}</span> con formato de tabla oficial para subirlo o compartirlo cuando lo necesites.
                 </p>
-                <button
-                  type="button"
-                  onClick={() => setShowGraphGuide((prev) => !prev)}
-                  className="font-semibold text-[#5B3FD9] hover:underline pt-1 cursor-pointer"
-                >
-                  {showGraphGuide
-                    ? 'Ocultar guía de conexión OneDrive / SharePoint'
-                    : 'Ver cómo conectar OneDrive / SharePoint'}
-                </button>
               </div>
             </div>
           </div>
-
-          {graphMessage && (
-            <div
-              className={`p-4 rounded-2xl text-xs font-medium border ${
-                graphMessage.ok
-                  ? 'bg-[#F4FBF7] border-[#CBEEDF] text-[#0F533B]'
-                  : 'bg-[#FEF2F2] border-[#FECACA] text-[#991B1B]'
-              }`}
-            >
-              {graphMessage.text}
-            </div>
-          )}
-
-          {showGraphGuide && (
-            <div className="p-5 rounded-2xl bg-[#FAF8FC] border border-[#E7E1F4] space-y-3 text-xs text-[#45395E] leading-relaxed">
-              <h3 className="text-sm font-bold text-[#241B35]">
-                Guía para conectar directamente con Excel en OneDrive o SharePoint
-              </h3>
-              <ol className="list-decimal pl-5 space-y-2">
-                <li>
-                  Sube el archivo descargado{' '}
-                  <span className="font-mono font-semibold">{data.excelMetadata.filename}</span> a tu
-                  carpeta de OneDrive o biblioteca de documentos en SharePoint. Asegúrate de que conserve la hoja{' '}
-                  <span className="font-mono font-semibold">{data.excelMetadata.worksheetName}</span> y la
-                  tabla <span className="font-mono font-semibold">{data.excelMetadata.tableName}</span>.
-                </li>
-                <li>
-                  En Microsoft Entra ID (Azure Portal), registra una aplicación y en{' '}
-                  <strong>API Permissions → Microsoft Graph → Application permissions</strong> asigna{' '}
-                  <span className="font-mono font-semibold">Files.ReadWrite.All</span> (y{' '}
-                  <span className="font-mono font-semibold">Sites.ReadWrite.All</span> si usas SharePoint)
-                  con consentimiento de administrador.
-                </li>
-                <li>
-                  Configura las siguientes variables secretas en el entorno del servidor:{' '}
-                  <span className="font-mono">
-                    MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET, MS_DRIVE_ID, MS_ITEM_ID
-                  </span>
-                  .
-                </li>
-                <li>
-                  Una vez configuradas, haz clic en <strong>Probar OneDrive / SharePoint</strong>. Cada nueva asistencia se agregará automáticamente como fila en la tabla de OneDrive/SharePoint.
-                </li>
-              </ol>
-            </div>
-          )}
         </div>
       </div>
     </section>

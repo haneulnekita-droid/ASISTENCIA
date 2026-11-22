@@ -1,18 +1,17 @@
 import { useMemo, useState } from 'react';
 import { ArrowUpDown, Download, FileSpreadsheet, RefreshCw, Search } from 'lucide-react';
-import { downloadExcelExport } from '../api';
 import type { AdminDashboardResponse } from '../types';
+import { exportRecordsToExcelFile } from '../utils/excelExport';
 import { ImageWithFallback } from './ImageWithFallback';
 import { CEREBRO_ESTRESADO_IMG } from './MascotGuide';
 
 interface HistorialViewProps {
-  token: string;
   data: AdminDashboardResponse;
   initialDateFilter?: string;
   onRefresh: () => Promise<void>;
 }
 
-export function HistorialView({ token, data, initialDateFilter = '', onRefresh }: HistorialViewProps) {
+export function HistorialView({ data, initialDateFilter = '', onRefresh }: HistorialViewProps) {
   const [search, setSearch] = useState('');
   const [dateFilter, setDateFilter] = useState(initialDateFilter);
   const [jornadaFilter, setJornadaFilter] = useState('');
@@ -68,11 +67,7 @@ export function HistorialView({ token, data, initialDateFilter = '', onRefresh }
     setExporting(true);
     setActionError(null);
     try {
-      await downloadExcelExport(token, {
-        date: dateFilter || undefined,
-        jornada: jornadaFilter || undefined,
-        search: search.trim() || undefined,
-      });
+      await exportRecordsToExcelFile(filteredRecords, dateFilter || 'FILTRADO');
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'No se pudo exportar el archivo Excel.');
     } finally {
@@ -84,7 +79,7 @@ export function HistorialView({ token, data, initialDateFilter = '', onRefresh }
     setExporting(true);
     setActionError(null);
     try {
-      await downloadExcelExport(token);
+      await exportRecordsToExcelFile(data.records);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'No se pudo descargar el Excel completo.');
     } finally {
@@ -107,13 +102,13 @@ export function HistorialView({ token, data, initialDateFilter = '', onRefresh }
             </div>
             <div>
               <p className="text-xs font-semibold text-[#FDE68A]">
-                Archivo histórico · {data.excelMetadata.filename}
+                Archivo histórico en la nube · {data.excelMetadata.filename}
               </p>
               <h1 className="text-2xl sm:text-3xl font-bold text-white mt-0.5">
                 Historial de Asistencias
               </h1>
               <p className="text-xs sm:text-sm text-[#EDE8FF] mt-1">
-                Consulta el acumulado de todas las sesiones, filtra por día y descarga reportes en Excel.
+                Consulta en tiempo real el acumulado de todas las sesiones desde cualquier dispositivo y descarga reportes en Excel.
               </p>
             </div>
           </div>

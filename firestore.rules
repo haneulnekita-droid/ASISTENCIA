@@ -1,0 +1,140 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global catch-all deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Core primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isOwnerAdminEmail() {
+      return isSignedIn() && request.auth.token.email == 'haneulnekita@gmail.com';
+    }
+
+    function isAdmin() {
+      return isOwnerAdminEmail() || (
+        isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // Entity validators
+    function isValidAdminUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'createdAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'displayName', 'createdAt']) &&
+        isValidId(data.uid) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+        (!('displayName' in data) || (data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100)) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidWorkshopConfig(data) {
+      return data.keys().hasAll(['workshopTitle', 'cycleLabel', 'activeJornada', 'allowParticipantSessionSelect', 'jornadas', 'updatedAt']) &&
+        data.keys().hasOnly(['workshopTitle', 'cycleLabel', 'activeJornada', 'allowParticipantSessionSelect', 'jornadas', 'updatedAt']) &&
+        data.workshopTitle is string && data.workshopTitle.size() >= 3 && data.workshopTitle.size() <= 200 &&
+        data.cycleLabel is string && data.cycleLabel.size() >= 2 && data.cycleLabel.size() <= 100 &&
+        data.activeJornada is string && data.activeJornada.size() >= 3 && data.activeJornada.size() <= 140 &&
+        data.allowParticipantSessionSelect is bool &&
+        data.jornadas is list && data.jornadas.size() >= 1 && data.jornadas.size() <= 30 &&
+        data.jornadas[0] is string && data.jornadas[0].size() >= 3 && data.jornadas[0].size() <= 140 &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAttendanceRecord(data) {
+      return data.keys().hasAll(['id', 'codigo', 'nombres', 'apellidos', 'fecha', 'hora', 'jornada', 'estado', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'codigo', 'nombres', 'apellidos', 'fecha', 'hora', 'jornada', 'estado', 'createdAt']) &&
+        data.id is string && data.id.size() >= 3 && data.id.size() <= 64 && data.id.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.codigo is string && data.codigo.size() >= 1 && data.codigo.size() <= 40 &&
+        data.nombres is string && data.nombres.size() >= 2 && data.nombres.size() <= 80 &&
+        data.apellidos is string && data.apellidos.size() >= 2 && data.apellidos.size() <= 80 &&
+        data.fecha is string && data.fecha.size() == 10 && data.fecha.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        data.hora is string && data.hora.size() == 8 && data.hora.matches('^\\d{2}:\\d{2}:\\d{2}$') &&
+        data.jornada is string && data.jornada.size() >= 3 && data.jornada.size() <= 140 &&
+        data.estado is string && data.estado == 'Asistió' &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidDuplicateAttempt(data) {
+      return data.keys().hasAll(['id', 'codigo', 'nombresIngresados', 'apellidosIngresados', 'jornada', 'fecha', 'horaIntento', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'codigo', 'nombresIngresados', 'apellidosIngresados', 'jornada', 'fecha', 'horaIntento', 'createdAt']) &&
+        data.id is string && data.id.size() >= 3 && data.id.size() <= 64 && data.id.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.codigo is string && data.codigo.size() >= 1 && data.codigo.size() <= 40 &&
+        data.nombresIngresados is string && data.nombresIngresados.size() >= 2 && data.nombresIngresados.size() <= 80 &&
+        data.apellidosIngresados is string && data.apellidosIngresados.size() >= 2 && data.apellidosIngresados.size() <= 80 &&
+        data.jornada is string && data.jornada.size() >= 3 && data.jornada.size() <= 140 &&
+        data.fecha is string && data.fecha.size() == 10 && data.fecha.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        data.horaIntento is string && data.horaIntento.size() == 8 && data.horaIntento.matches('^\\d{2}:\\d{2}:\\d{2}$') &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidPulseResponse(data) {
+      return data.keys().hasAll(['id', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'semesterTrend', 'mochilaPeso', 'createdAt']) &&
+        data.id is string && data.id.size() >= 3 && data.id.size() <= 64 && data.id.matches('^[a-zA-Z0-9_\\-]+$') &&
+        (!('semesterTrend' in data) || (data.semesterTrend is string && data.semesterTrend in ['subioMucho', 'porMomentos', 'masTranquilo'])) &&
+        (!('mochilaPeso' in data) || (data.mochilaPeso is string && data.mochilaPeso in ['examenesTrabajos', 'cansancioSueno', 'practicasHorarios', 'bajoControl'])) &&
+        data.createdAt is timestamp;
+    }
+
+    // Connection test doc
+    match /test/{docId} {
+      allow get: if isValidId(docId) && docId == 'connection';
+    }
+
+    // Facilitators allowlist
+    match /admins/{adminUid} {
+      allow get: if isValidId(adminUid) && (isAdmin() || (isSignedIn() && request.auth.uid == adminUid));
+      allow list: if isOwnerAdminEmail();
+      allow create: if isValidId(adminUid) && isAdmin() && isValidAdminUser(incoming()) && incoming().uid == adminUid && incoming().createdAt == request.time;
+      allow update: if isValidId(adminUid) && isAdmin() && isValidAdminUser(incoming()) && incoming().uid == existing().uid && incoming().createdAt == existing().createdAt && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'displayName']);
+      allow delete: if isValidId(adminUid) && isAdmin() && adminUid != request.auth.uid;
+    }
+
+    // Workshop session config (read-only for public 'workshop' doc; admin writes)
+    match /config/{configId} {
+      allow get: if isValidId(configId) && configId == 'workshop';
+      allow list: if isOwnerAdminEmail();
+      allow create: if isValidId(configId) && configId == 'workshop' && isAdmin() && isValidWorkshopConfig(incoming()) && incoming().updatedAt == request.time;
+      allow update: if isValidId(configId) && configId == 'workshop' && isAdmin() && isValidWorkshopConfig(incoming()) && incoming().updatedAt == request.time && incoming().diff(existing()).affectedKeys().hasOnly(['workshopTitle', 'cycleLabel', 'activeJornada', 'allowParticipantSessionSelect', 'jornadas', 'updatedAt']);
+    }
+
+    // Attendance records: public atomic create-only, facilitator-only read/list
+    match /attendance_records/{recordId} {
+      allow get: if isValidId(recordId) && isAdmin();
+      allow list: if isOwnerAdminEmail();
+      allow create: if isValidId(recordId) && isValidAttendanceRecord(incoming()) && incoming().createdAt == request.time;
+      allow update, delete: if false;
+    }
+
+    // Duplicate attempts log: public create-only, facilitator-only read/list
+    match /duplicate_attempts/{attemptId} {
+      allow get: if isValidId(attemptId) && isAdmin();
+      allow list: if isOwnerAdminEmail();
+      allow create: if isValidId(attemptId) && isValidDuplicateAttempt(incoming()) && incoming().createdAt == request.time;
+      allow update, delete: if false;
+    }
+
+    // Anonymous pulse responses: public create-only, facilitator-only read/list
+    match /pulse_responses/{responseId} {
+      allow get: if isValidId(responseId) && isAdmin();
+      allow list: if isOwnerAdminEmail();
+      allow create: if isValidId(responseId) && isValidPulseResponse(incoming()) && incoming().createdAt == request.time;
+      allow update, delete: if false;
+    }
+  }
+}

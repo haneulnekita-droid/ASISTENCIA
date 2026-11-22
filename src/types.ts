@@ -80,7 +80,7 @@ export interface PulseStats {
 
 export interface PersistenceSummary {
   isVercel: boolean;
-  mode: 'graph-excel' | 'upstash-kv' | 'local-file' | 'vercel-tmp';
+  mode: 'firestore-cloud' | 'graph-excel' | 'upstash-kv' | 'local-file' | 'vercel-tmp';
 }
 
 export interface AdminDashboardResponse {

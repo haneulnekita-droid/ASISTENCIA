@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Check, Copy, Download, ExternalLink, Printer, QrCode } from 'lucide-react';
+import QRCode from 'qrcode';
 import { fetchPublicInfo, fetchQrDataUrl } from '../api';
+import { getPublicWorkshopConfig } from '../services/firestoreAttendance';
 import { ImageWithFallback } from './ImageWithFallback';
 import { CEREBRO_ZEN_IMG } from './MascotGuide';
 
@@ -19,9 +21,18 @@ export function QrShareView({ onGoToForm }: { onGoToForm: () => void }) {
   useEffect(() => {
     void (async () => {
       try {
-        const info = await fetchPublicInfo();
-        setActiveJornada(info.config.activeJornada);
-        if (info.publicAppUrl) {
+        const [cloudConfig, info] = await Promise.all([
+          getPublicWorkshopConfig().catch(() => null),
+          fetchPublicInfo().catch(() => null),
+        ]);
+
+        if (cloudConfig?.activeJornada) {
+          setActiveJornada(cloudConfig.activeJornada);
+        } else if (info?.config?.activeJornada) {
+          setActiveJornada(info.config.activeJornada);
+        }
+
+        if (info?.publicAppUrl) {
           const cleanPublic = `${info.publicAppUrl.replace(/\/$/, '')}/?registro=1`;
           setSuggestedPublicUrl(cleanPublic);
         }
@@ -39,9 +50,23 @@ export function QrShareView({ onGoToForm }: { onGoToForm: () => void }) {
 
     void (async () => {
       try {
-        const res = await fetchQrDataUrl(targetUrl);
+        try {
+          const res = await fetchQrDataUrl(targetUrl);
+          if (active) {
+            setQrDataUrl(res.dataUrl);
+            return;
+          }
+        } catch {
+          // Fallback to client-side QR generation
+        }
+
+        const localDataUrl = await QRCode.toDataURL(targetUrl, {
+          width: 480,
+          margin: 2,
+          color: { dark: '#241B35', light: '#FFFFFF' },
+        });
         if (active) {
-          setQrDataUrl(res.dataUrl);
+          setQrDataUrl(localDataUrl);
         }
       } catch (err) {
         if (active) {
@@ -68,9 +93,9 @@ export function QrShareView({ onGoToForm }: { onGoToForm: () => void }) {
   };
 
   const handleDownloadPlainPng = () => {
-    const downloadUrl = `/api/qr?download=1&url=${encodeURIComponent(targetUrl)}`;
+    if (!qrDataUrl) return;
     const link = document.createElement('a');
-    link.href = downloadUrl;
+    link.href = qrDataUrl;
     link.download = 'QR_MI_HUELLA_DE_BIENESTAR.png';
     document.body.appendChild(link);
     link.click();
@@ -85,11 +110,9 @@ export function QrShareView({ onGoToForm }: { onGoToForm: () => void }) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Warm cream background
     ctx.fillStyle = '#F6F2FF';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Header vibrant gradient-like band
     const grad = ctx.createLinearGradient(0, 0, canvas.width, 0);
     grad.addColorStop(0, '#522FD6');
     grad.addColorStop(1, '#7C4DFF');
@@ -105,7 +128,6 @@ export function QrShareView({ onGoToForm }: { onGoToForm: () => void }) {
     ctx.font = '600 24px Plus Jakarta Sans, system-ui, sans-serif';
     ctx.fillText('Jornada de Evaluación · Trabajo Social V Ciclo', canvas.width / 2, 146);
 
-    // Card surface
     ctx.fillStyle = '#FFFFFF';
     ctx.strokeStyle = '#D5C5FB';
     ctx.lineWidth = 4;
@@ -114,7 +136,6 @@ export function QrShareView({ onGoToForm }: { onGoToForm: () => void }) {
     ctx.fill();
     ctx.stroke();
 
-    // Load QR image
     const qrImg = new Image();
     qrImg.crossOrigin = 'anonymous';
     await new Promise<void>((resolve, reject) => {
@@ -123,7 +144,6 @@ export function QrShareView({ onGoToForm }: { onGoToForm: () => void }) {
       qrImg.src = qrDataUrl;
     });
 
-    // Load Cerebrín mascot image safely
     try {
       const brainImg = new Image();
       brainImg.crossOrigin = 'anonymous';
@@ -237,7 +257,7 @@ export function QrShareView({ onGoToForm }: { onGoToForm: () => void }) {
               Comparte la tarjeta QR de Cerebrín
             </h1>
             <p className="text-sm text-[#5A4E73] leading-relaxed">
-              Descarga el código QR o la tarjeta ilustrada en formato PNG para enviarla por WhatsApp, imprimirla o proyectarla al iniciar la jornada.
+              Descarga el código QR o la tarjeta ilustrada en formato PNG para enviarla por WhatsApp, imprimirla o proyectarla al iniciar la jornada. Todos los celulares registran al mismo tiempo en la nube.
             </p>
           </div>
 
