@@ -181,7 +181,7 @@ export function RegistroView() {
       setFormError('Por favor escribe tus apellidos completos.');
       return;
     }
-    if (codigo.trim().length < 2) {
+    if (codigo.trim().length < 1) {
       setFormError('Por favor ingresa tu código de estudiante o identificador.');
       return;
     }
@@ -232,7 +232,7 @@ export function RegistroView() {
 
   const hasNombres = nombres.trim().length >= 2;
   const hasApellidos = apellidos.trim().length >= 2;
-  const hasCodigo = codigo.trim().length >= 2;
+  const hasCodigo = codigo.trim().length >= 1;
   const formProgress =
     (hasNombres ? 33 : 0) + (hasApellidos ? 33 : 0) + (hasCodigo ? 34 : 0);
 

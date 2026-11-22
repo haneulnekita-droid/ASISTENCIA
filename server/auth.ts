@@ -228,8 +228,9 @@ export function verifyAdminToken(token: string): TokenPayload | null {
 
 export function extractBearerToken(req: Request): string | null {
   const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) return null;
-  return header.slice('Bearer '.length).trim() || null;
+  if (!header) return null;
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || null;
 }
 
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {

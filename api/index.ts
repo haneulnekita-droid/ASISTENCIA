@@ -11,5 +11,12 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     });
   }
   const app = await appPromise;
-  return app(req as never, res as never);
+
+  await new Promise<void>((resolve, reject) => {
+    const done = () => resolve();
+    res.once('finish', done);
+    res.once('close', done);
+    res.once('error', reject);
+    app(req as never, res as never);
+  });
 }

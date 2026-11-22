@@ -56,7 +56,14 @@ export async function createApiApp() {
 
   const app = express();
   app.set('trust proxy', 1);
-  app.use(express.json({ limit: '256kb' }));
+  const jsonParser = express.json({ limit: '256kb' });
+  app.use((req, res, next) => {
+    if (req.body !== undefined) {
+      next();
+      return;
+    }
+    jsonParser(req, res, next);
+  });
   app.use('/api', (_req, res, next) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.setHeader('Pragma', 'no-cache');
@@ -103,7 +110,7 @@ export async function createApiApp() {
         res.status(400).json({ error: 'Por favor ingresa tus apellidos completos.' });
         return;
       }
-      if (codigo.length < 2) {
+      if (codigo.length < 1) {
         res.status(400).json({ error: 'Por favor ingresa tu código de estudiante o identificador.' });
         return;
       }

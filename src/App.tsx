@@ -19,54 +19,10 @@ function resolveInitialSection(): AppSection {
   return 'registro';
 }
 
-const TOKEN_STORAGE_KEY = 'huella_admin_token';
-const USER_STORAGE_KEY = 'huella_admin_user';
-
-function readStoredSession(): { token: string | null; username: string } {
-  if (typeof window === 'undefined') return { token: null, username: 'facilitadora' };
-  try {
-    const sessionToken = window.sessionStorage.getItem(TOKEN_STORAGE_KEY);
-    const localToken = window.localStorage.getItem(TOKEN_STORAGE_KEY);
-    const token = sessionToken || localToken || null;
-    const username =
-      window.sessionStorage.getItem(USER_STORAGE_KEY) ||
-      window.localStorage.getItem(USER_STORAGE_KEY) ||
-      'facilitadora';
-    return { token, username };
-  } catch {
-    return { token: null, username: 'facilitadora' };
-  }
-}
-
-function saveStoredSession(token: string | null, username: string, rememberDevice: boolean): void {
-  if (typeof window === 'undefined') return;
-  try {
-    if (!token) {
-      window.sessionStorage.removeItem(TOKEN_STORAGE_KEY);
-      window.sessionStorage.removeItem(USER_STORAGE_KEY);
-      window.localStorage.removeItem(TOKEN_STORAGE_KEY);
-      window.localStorage.removeItem(USER_STORAGE_KEY);
-      return;
-    }
-    window.sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
-    window.sessionStorage.setItem(USER_STORAGE_KEY, username);
-    if (rememberDevice) {
-      window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
-      window.localStorage.setItem(USER_STORAGE_KEY, username);
-    } else {
-      window.localStorage.removeItem(TOKEN_STORAGE_KEY);
-      window.localStorage.removeItem(USER_STORAGE_KEY);
-    }
-  } catch {
-    // Ignore storage quota / privacy mode errors
-  }
-}
-
 export default function App() {
-  const initialSession = readStoredSession();
   const [activeSection, setActiveSection] = useState<AppSection>(resolveInitialSection);
-  const [token, setToken] = useState<string | null>(initialSession.token);
-  const [adminUser, setAdminUser] = useState<string>(initialSession.username);
+  const [token, setToken] = useState<string | null>(null);
+  const [adminUser, setAdminUser] = useState<string>('facilitadora');
   const [authStatus, setAuthStatus] = useState<AuthStatusResponse | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [dashboardData, setDashboardData] = useState<AdminDashboardResponse | null>(null);
@@ -82,7 +38,6 @@ export default function App() {
       if (status.authenticated && status.username) {
         setAdminUser(status.username);
       } else if (currentToken) {
-        saveStoredSession(null, 'facilitadora', false);
         setToken(null);
         setDashboardData(null);
       }
@@ -99,7 +54,6 @@ export default function App() {
       setDashboardData(data);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
-        saveStoredSession(null, 'facilitadora', false);
         setToken(null);
         setDashboardData(null);
         void refreshAuthStatus(null);
@@ -114,7 +68,9 @@ export default function App() {
   }, [refreshAuthStatus]);
 
   useEffect(() => {
-    void refreshAuthStatus(token);
+    if (!token) {
+      void refreshAuthStatus(null);
+    }
   }, [token, refreshAuthStatus]);
 
   useEffect(() => {
@@ -123,8 +79,7 @@ export default function App() {
     }
   }, [token, activeSection, loadDashboard]);
 
-  const handleAuthenticated = (newToken: string, username: string, rememberDevice = true) => {
-    saveStoredSession(newToken, username, rememberDevice);
+  const handleAuthenticated = (newToken: string, username: string) => {
     setToken(newToken);
     setAdminUser(username);
     setAuthError(null);
@@ -145,7 +100,6 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    saveStoredSession(null, 'facilitadora', false);
     setToken(null);
     setDashboardData(null);
     setActiveSection('registro');

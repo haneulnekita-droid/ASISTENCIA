@@ -8,14 +8,13 @@ import { CEREBRO_ESCENA_IMG, CEREBRO_ZEN_IMG } from './MascotGuide';
 
 interface AdminLoginViewProps {
   authStatus: AuthStatusResponse;
-  onAuthenticated: (token: string, username: string, rememberDevice: boolean) => void;
+  onAuthenticated: (token: string, username: string) => void;
 }
 
 export function AdminLoginView({ authStatus, onAuthenticated }: AdminLoginViewProps) {
   const isSetupMode = !authStatus.initialized;
   const [username, setUsername] = useState(authStatus.usernameHint || 'facilitadora');
   const [password, setPassword] = useState('');
-  const [rememberDevice, setRememberDevice] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +36,7 @@ export function AdminLoginView({ authStatus, onAuthenticated }: AdminLoginViewPr
       setSubmitting(true);
       try {
         const res = await setupFirstRunAdmin(username.trim(), password);
-        onAuthenticated(res.token, res.username, rememberDevice);
+        onAuthenticated(res.token, res.username);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'No se pudo completar el registro inicial.');
       } finally {
@@ -54,7 +53,7 @@ export function AdminLoginView({ authStatus, onAuthenticated }: AdminLoginViewPr
     setSubmitting(true);
     try {
       const res = await loginAdmin(username.trim(), password);
-      onAuthenticated(res.token, res.username, rememberDevice);
+      onAuthenticated(res.token, res.username);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Usuario o contraseña incorrectos.');
     } finally {
@@ -171,15 +170,19 @@ export function AdminLoginView({ authStatus, onAuthenticated }: AdminLoginViewPr
                   </div>
                 </div>
 
-                <label className="flex items-center gap-2.5 text-xs text-[#45395E] cursor-pointer select-none pt-1">
-                  <input
-                    type="checkbox"
-                    checked={rememberDevice}
-                    onChange={(e) => setRememberDevice(e.target.checked)}
-                    className="w-4 h-4 rounded accent-[#5B3FD9]"
-                  />
-                  <span>Mantener sesión iniciada en este navegador para ingresar rápido</span>
-                </label>
+                {isSetupMode ? (
+                  <p className="text-xs text-[#5A4E73]">
+                    Usa una contraseña de al menos 6 caracteres. Para usar una clave fija en Vercel, configura{' '}
+                    <span className="font-mono">ADMIN_USERNAME</span> y{' '}
+                    <span className="font-mono">ADMIN_PASSWORD</span> en sus variables de entorno.
+                  </p>
+                ) : !authStatus.envConfigured ? (
+                  <p className="text-xs text-[#5A4E73]">
+                    ¿Necesitas definir o cambiar una clave fija? Configura{' '}
+                    <span className="font-mono">ADMIN_USERNAME</span> y{' '}
+                    <span className="font-mono">ADMIN_PASSWORD</span> en Secrets o en Vercel.
+                  </p>
+                ) : null}
 
                 <button
                   type="submit"
