@@ -19,11 +19,56 @@ function resolveInitialSection(): AppSection {
   return 'registro';
 }
 
+const TOKEN_STORAGE_KEY = 'huella_admin_token';
+const USER_STORAGE_KEY = 'huella_admin_user';
+
+function readStoredSession(): { token: string | null; username: string } {
+  if (typeof window === 'undefined') return { token: null, username: 'facilitadora' };
+  try {
+    const sessionToken = window.sessionStorage.getItem(TOKEN_STORAGE_KEY);
+    const localToken = window.localStorage.getItem(TOKEN_STORAGE_KEY);
+    const token = sessionToken || localToken || null;
+    const username =
+      window.sessionStorage.getItem(USER_STORAGE_KEY) ||
+      window.localStorage.getItem(USER_STORAGE_KEY) ||
+      'facilitadora';
+    return { token, username };
+  } catch {
+    return { token: null, username: 'facilitadora' };
+  }
+}
+
+function saveStoredSession(token: string | null, username: string, rememberDevice: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (!token) {
+      window.sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+      window.sessionStorage.removeItem(USER_STORAGE_KEY);
+      window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+      window.localStorage.removeItem(USER_STORAGE_KEY);
+      return;
+    }
+    window.sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
+    window.sessionStorage.setItem(USER_STORAGE_KEY, username);
+    if (rememberDevice) {
+      window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
+      window.localStorage.setItem(USER_STORAGE_KEY, username);
+    } else {
+      window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+      window.localStorage.removeItem(USER_STORAGE_KEY);
+    }
+  } catch {
+    // Ignore storage quota / privacy mode errors
+  }
+}
+
 export default function App() {
+  const initialSession = readStoredSession();
   const [activeSection, setActiveSection] = useState<AppSection>(resolveInitialSection);
-  const [token, setToken] = useState<string | null>(null);
-  const [adminUser, setAdminUser] = useState<string>('facilitadora');
+  const [token, setToken] = useState<string | null>(initialSession.token);
+  const [adminUser, setAdminUser] = useState<string>(initialSession.username);
   const [authStatus, setAuthStatus] = useState<AuthStatusResponse | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [dashboardData, setDashboardData] = useState<AdminDashboardResponse | null>(null);
   const [loadingDashboard, setLoadingDashboard] = useState<boolean>(false);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
@@ -31,16 +76,18 @@ export default function App() {
 
   const refreshAuthStatus = useCallback(async (currentToken: string | null) => {
     try {
+      setAuthError(null);
       const status = await fetchAuthStatus(currentToken);
       setAuthStatus(status);
       if (status.authenticated && status.username) {
         setAdminUser(status.username);
       } else if (currentToken) {
+        saveStoredSession(null, 'facilitadora', false);
         setToken(null);
         setDashboardData(null);
       }
     } catch {
-      // Keep current state gracefully
+      setAuthError('No se pudo conectar con el servidor para verificar el acceso.');
     }
   }, []);
 
@@ -52,6 +99,7 @@ export default function App() {
       setDashboardData(data);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
+        saveStoredSession(null, 'facilitadora', false);
         setToken(null);
         setDashboardData(null);
         void refreshAuthStatus(null);
@@ -75,9 +123,11 @@ export default function App() {
     }
   }, [token, activeSection, loadDashboard]);
 
-  const handleAuthenticated = (newToken: string, username: string) => {
+  const handleAuthenticated = (newToken: string, username: string, rememberDevice = true) => {
+    saveStoredSession(newToken, username, rememberDevice);
     setToken(newToken);
     setAdminUser(username);
+    setAuthError(null);
     setAuthStatus((prev) =>
       prev
         ? { ...prev, initialized: true, authenticated: true, username }
@@ -95,6 +145,7 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    saveStoredSession(null, 'facilitadora', false);
     setToken(null);
     setDashboardData(null);
     setActiveSection('registro');
@@ -175,6 +226,17 @@ export default function App() {
                   authStatus={authStatus}
                   onAuthenticated={handleAuthenticated}
                 />
+              ) : authError ? (
+                <div className="max-w-xl mx-auto px-4 py-16 text-center space-y-4">
+                  <p className="text-sm text-[#991B1B]">{authError}</p>
+                  <button
+                    type="button"
+                    onClick={() => void refreshAuthStatus(token)}
+                    className="px-5 py-2.5 rounded-xl bg-[#5B3FD9] text-white text-sm font-semibold cursor-pointer"
+                  >
+                    Reintentar conexión
+                  </button>
+                </div>
               ) : (
                 <div className="max-w-5xl mx-auto px-4 py-16 text-center text-sm text-[#5A4E73]">
                   Verificando acceso privado...
@@ -210,6 +272,7 @@ export default function App() {
                   token={token}
                   data={dashboardData}
                   initialDateFilter={historialDatePrefill}
+                  onRefresh={() => loadDashboard(token)}
                 />
               )
             ) : null}

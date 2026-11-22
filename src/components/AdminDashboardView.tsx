@@ -50,6 +50,7 @@ export function AdminDashboardView({
   const [savingConfig, setSavingConfig] = useState<boolean>(false);
   const [configFeedback, setConfigFeedback] = useState<string | null>(null);
   const [exporting, setExporting] = useState<boolean>(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [graphMessage, setGraphMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [graphBusy, setGraphBusy] = useState<boolean>(false);
   const [showGraphGuide, setShowGraphGuide] = useState<boolean>(!data.graphStatus.configured);
@@ -104,8 +105,11 @@ export function AdminDashboardView({
 
   const handleExportAll = async () => {
     setExporting(true);
+    setActionError(null);
     try {
       await downloadExcelExport(token);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'No se pudo descargar el archivo Excel.');
     } finally {
       setExporting(false);
     }
@@ -113,8 +117,11 @@ export function AdminDashboardView({
 
   const handleExportDay = async (fecha: string) => {
     setExporting(true);
+    setActionError(null);
     try {
       await downloadExcelExport(token, { date: fecha });
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'No se pudo descargar el Excel del día.');
     } finally {
       setExporting(false);
     }
@@ -127,6 +134,11 @@ export function AdminDashboardView({
       const res = await testGraphConnection(token);
       setGraphMessage({ ok: res.ok, text: res.message });
       await onRefresh();
+    } catch (err) {
+      setGraphMessage({
+        ok: false,
+        text: err instanceof Error ? err.message : 'Error al probar conexión con OneDrive/SharePoint.',
+      });
     } finally {
       setGraphBusy(false);
     }
@@ -139,6 +151,11 @@ export function AdminDashboardView({
       const res = await syncGraphWorkbook(token);
       setGraphMessage({ ok: res.ok, text: res.message });
       await onRefresh();
+    } catch (err) {
+      setGraphMessage({
+        ok: false,
+        text: err instanceof Error ? err.message : 'Error al sincronizar el archivo Excel en la nube.',
+      });
     } finally {
       setGraphBusy(false);
     }
@@ -207,6 +224,12 @@ export function AdminDashboardView({
             </button>
           </div>
         </div>
+
+        {actionError && (
+          <div className="p-4 rounded-2xl bg-[#FEF2F2] border border-[#FECACA] text-[#991B1B] text-sm">
+            {actionError}
+          </div>
+        )}
 
         {/* 4 Vibrant KPI Stat Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

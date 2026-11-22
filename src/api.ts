@@ -27,7 +27,7 @@ async function parseJsonSafe(res: Response): Promise<Record<string, unknown>> {
 }
 
 export async function fetchPublicInfo(): Promise<PublicInfoResponse> {
-  const res = await fetch('/api/public/info');
+  const res = await fetch('/api/public/info', { cache: 'no-store' });
   if (!res.ok) {
     throw new ApiError('No se pudo cargar la información de la jornada.', res.status);
   }
@@ -86,7 +86,7 @@ export async function fetchQrDataUrl(targetUrl: string): Promise<{ url: string; 
 export async function fetchAuthStatus(token: string | null): Promise<AuthStatusResponse> {
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch('/api/auth/status', { headers });
+  const res = await fetch('/api/auth/status', { headers, cache: 'no-store' });
   if (!res.ok) {
     throw new ApiError('Error al verificar sesión.', res.status);
   }
@@ -134,6 +134,7 @@ export async function loginAdmin(
 export async function fetchAdminDashboard(token: string): Promise<AdminDashboardResponse> {
   const res = await fetch('/api/admin/dashboard', {
     headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
   });
   const data = await parseJsonSafe(res);
   if (!res.ok) {
@@ -181,6 +182,7 @@ export async function downloadExcelExport(
 
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
   });
 
   if (!res.ok) {
@@ -203,7 +205,7 @@ export async function downloadExcelExport(
   document.body.appendChild(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(objectUrl);
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
 }
 
 export async function testGraphConnection(

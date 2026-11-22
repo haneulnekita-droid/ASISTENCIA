@@ -57,6 +57,11 @@ export async function createApiApp() {
   const app = express();
   app.set('trust proxy', 1);
   app.use(express.json({ limit: '256kb' }));
+  app.use('/api', (_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    next();
+  });
 
   // Public info for attendance form (no PII or participant lists exposed)
   app.get('/api/public/info', async (_req, res) => {

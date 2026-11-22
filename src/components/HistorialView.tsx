@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ArrowUpDown, Download, FileSpreadsheet, Search } from 'lucide-react';
+import { ArrowUpDown, Download, FileSpreadsheet, RefreshCw, Search } from 'lucide-react';
 import { downloadExcelExport } from '../api';
 import type { AdminDashboardResponse } from '../types';
 import { ImageWithFallback } from './ImageWithFallback';
@@ -9,14 +9,17 @@ interface HistorialViewProps {
   token: string;
   data: AdminDashboardResponse;
   initialDateFilter?: string;
+  onRefresh: () => Promise<void>;
 }
 
-export function HistorialView({ token, data, initialDateFilter = '' }: HistorialViewProps) {
+export function HistorialView({ token, data, initialDateFilter = '', onRefresh }: HistorialViewProps) {
   const [search, setSearch] = useState('');
   const [dateFilter, setDateFilter] = useState(initialDateFilter);
   const [jornadaFilter, setJornadaFilter] = useState('');
   const [ascending, setAscending] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const uniqueDates = useMemo(() => {
     return Array.from(new Set(data.records.map((r) => r.fecha))).sort((a, b) =>
@@ -49,14 +52,29 @@ export function HistorialView({ token, data, initialDateFilter = '' }: Historial
 
   const hasFilters = Boolean(dateFilter || jornadaFilter || search.trim());
 
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setActionError(null);
+    try {
+      await onRefresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'No se pudo actualizar el historial.');
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const handleExportFiltered = async () => {
     setExporting(true);
+    setActionError(null);
     try {
       await downloadExcelExport(token, {
         date: dateFilter || undefined,
         jornada: jornadaFilter || undefined,
         search: search.trim() || undefined,
       });
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'No se pudo exportar el archivo Excel.');
     } finally {
       setExporting(false);
     }
@@ -64,8 +82,11 @@ export function HistorialView({ token, data, initialDateFilter = '' }: Historial
 
   const handleExportAll = async () => {
     setExporting(true);
+    setActionError(null);
     try {
       await downloadExcelExport(token);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'No se pudo descargar el Excel completo.');
     } finally {
       setExporting(false);
     }
@@ -98,6 +119,16 @@ export function HistorialView({ token, data, initialDateFilter = '' }: Historial
           </div>
 
           <div className="flex flex-wrap items-center gap-3 shrink-0">
+            <button
+              type="button"
+              disabled={refreshing}
+              onClick={() => void handleRefresh()}
+              className="min-h-[44px] px-4 py-2 rounded-xl bg-white/15 border border-white/30 text-white text-sm font-semibold inline-flex items-center gap-2 hover:bg-white/25 disabled:opacity-60 transition-colors cursor-pointer"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              <span>{refreshing ? 'Actualizando...' : 'Actualizar'}</span>
+            </button>
+
             {hasFilters && (
               <button
                 type="button"
@@ -123,6 +154,12 @@ export function HistorialView({ token, data, initialDateFilter = '' }: Historial
             </button>
           </div>
         </div>
+
+        {actionError && (
+          <div className="p-4 rounded-2xl bg-[#FEF2F2] border border-[#FECACA] text-[#991B1B] text-sm">
+            {actionError}
+          </div>
+        )}
 
         {/* Filter Bar */}
         <div className="bg-white rounded-[2rem] border-2 border-[#DECFFA] p-5 space-y-4 shadow-[0_10px_28px_-14px_rgba(91,63,217,0.16)]">

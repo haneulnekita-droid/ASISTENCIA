@@ -105,47 +105,57 @@ function safeEqualText(a: string, b: string): boolean {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
+let authSetupQueue: Promise<unknown> = Promise.resolve();
+
+function withAuthLock<T>(task: () => Promise<T>): Promise<T> {
+  const next = authSetupQueue.then(task, task);
+  authSetupQueue = next.then(
+    () => undefined,
+    () => undefined
+  );
+  return next;
+}
+
 export async function claimFirstRunAdmin(
   username: string,
   password: string
 ): Promise<{ ok: boolean; error?: string; username?: string }> {
-  const envCreds = getEnvAdminCredentials();
-  if (envCreds) {
-    return { ok: false, error: 'Las credenciales ya están configuradas en el servidor.' };
-  }
-  const existing = await readClaimedAdmin();
-  if (existing) {
-    return { ok: false, error: 'El acceso administrativo ya fue configurado previamente.' };
-  }
+  return withAuthLock(async () => {
+    const envCreds = getEnvAdminCredentials();
+    if (envCreds) {
+      return { ok: false, error: 'Las credenciales ya están configuradas en el servidor.' };
+    }
+    const existing = await readClaimedAdmin();
+    if (existing) {
+      return { ok: false, error: 'El acceso administrativo ya fue configurado previamente.' };
+    }
 
-  const cleanUser = username.trim();
-  if (cleanUser.length < 3 || cleanUser.length > 40) {
-    return { ok: false, error: 'El usuario debe tener entre 3 y 40 caracteres.' };
-  }
-  if (password.length < 6 || password.length > 100) {
-    return { ok: false, error: 'La contraseña debe tener al menos 6 caracteres.' };
-  }
+    const cleanUser = username.trim();
+    if (cleanUser.length < 3 || cleanUser.length > 40) {
+      return { ok: false, error: 'El usuario debe tener entre 3 y 40 caracteres.' };
+    }
+    if (password.length < 6 || password.length > 100) {
+      return { ok: false, error: 'La contraseña debe tener al menos 6 caracteres.' };
+    }
 
-  await fs.mkdir(getDataDir(), { recursive: true });
-  const salt = crypto.randomBytes(16).toString('hex');
-  const hash = hashPassword(password, salt);
-  const payload: StoredAdminCredential = {
-    username: cleanUser,
-    salt,
-    hash,
-    claimedAt: new Date().toISOString(),
-  };
+    await fs.mkdir(getDataDir(), { recursive: true });
+    const salt = crypto.randomBytes(16).toString('hex');
+    const hash = hashPassword(password, salt);
+    const payload: StoredAdminCredential = {
+      username: cleanUser,
+      salt,
+      hash,
+      claimedAt: new Date().toISOString(),
+    };
 
-  try {
-    await fs.writeFile(getAdminCredentialPath(), JSON.stringify(payload, null, 2), {
-      encoding: 'utf8',
-      flag: 'wx',
-    });
-    await kvSetJson(ADMIN_KV_KEY, payload);
-    return { ok: true, username: cleanUser };
-  } catch {
-    return { ok: false, error: 'El acceso administrativo ya fue reclamado.' };
-  }
+    try {
+      await kvSetJson(ADMIN_KV_KEY, payload);
+      await fs.writeFile(getAdminCredentialPath(), JSON.stringify(payload, null, 2), 'utf8');
+      return { ok: true, username: cleanUser };
+    } catch {
+      return { ok: false, error: 'No se pudo guardar el acceso administrativo.' };
+    }
+  });
 }
 
 export async function verifyAdminLogin(username: string, password: string): Promise<boolean> {

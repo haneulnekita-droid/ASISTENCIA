@@ -23,6 +23,7 @@ function paths() {
   return {
     dir,
     excel: path.join(dir, EXCEL_FILENAME),
+    recordsBackup: path.join(dir, 'records_backup.json'),
     config: path.join(dir, 'config.json'),
     duplicates: path.join(dir, 'duplicate_attempts.json'),
     pulse: path.join(dir, 'pulse_stats.json'),
@@ -208,47 +209,96 @@ function extractRecordsFromWorkbook(workbook: ExcelJS.Workbook): AttendanceRecor
   return records;
 }
 
+async function readRecordsBackupUnsafe(): Promise<AttendanceRecord[]> {
+  try {
+    const raw = await fs.readFile(paths().recordsBackup, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as AttendanceRecord[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function mergeRecordLists(primary: AttendanceRecord[], secondary: AttendanceRecord[]): AttendanceRecord[] {
+  const map = new Map<string, AttendanceRecord>();
+  for (const r of secondary) {
+    if (r && r.id && r.codigo) map.set(r.id, r);
+  }
+  for (const r of primary) {
+    if (r && r.id && r.codigo) map.set(r.id, r);
+  }
+  return Array.from(map.values()).sort((a, b) =>
+    `${a.fecha} ${a.hora} ${a.createdAt}`.localeCompare(`${b.fecha} ${b.hora} ${b.createdAt}`)
+  );
+}
+
 async function readLocalExcelRecordsUnsafe(): Promise<AttendanceRecord[]> {
   await ensureDataDir();
   const { excel } = paths();
+  let excelRecords: AttendanceRecord[] = [];
+  let hasExcel = true;
+
   try {
     await fs.access(excel);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(excel);
+    excelRecords = extractRecordsFromWorkbook(workbook);
   } catch {
-    const emptyWb = buildWorkbookFromRecords([]);
-    await emptyWb.xlsx.writeFile(excel);
-    return [];
+    hasExcel = false;
   }
 
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(excel);
-  return extractRecordsFromWorkbook(workbook);
+  const backupRecords = await readRecordsBackupUnsafe();
+
+  if (!hasExcel) {
+    const initial = backupRecords;
+    const wb = buildWorkbookFromRecords(initial);
+    await wb.xlsx.writeFile(excel);
+    return initial;
+  }
+
+  if (backupRecords.length > excelRecords.length) {
+    const merged = mergeRecordLists(excelRecords, backupRecords);
+    const wb = buildWorkbookFromRecords(merged);
+    await wb.xlsx.writeFile(excel);
+    return merged;
+  }
+
+  return excelRecords;
 }
 
 async function readRecordsUnsafe(): Promise<AttendanceRecord[]> {
+  let kvRecords: AttendanceRecord[] | null = null;
+  if (isKvConfigured()) {
+    const fromKv = await kvGetJson<AttendanceRecord[]>(KV_KEYS.records);
+    if (Array.isArray(fromKv)) {
+      kvRecords = fromKv;
+    }
+  }
+
+  const localRecords = kvRecords ?? (await readLocalExcelRecordsUnsafe());
+
   if (getGraphStatus().configured) {
     const remoteRecords = await fetchRecordsFromGraphTable();
     if (remoteRecords) {
-      return remoteRecords;
+      return mergeRecordLists(remoteRecords, localRecords);
     }
   }
 
-  if (isKvConfigured()) {
-    const kvRecords = await kvGetJson<AttendanceRecord[]>(KV_KEYS.records);
-    if (Array.isArray(kvRecords)) {
-      return kvRecords;
-    }
-  }
-
-  return readLocalExcelRecordsUnsafe();
+  return localRecords;
 }
 
 async function writeRecordsUnsafe(records: AttendanceRecord[]): Promise<void> {
   if (isKvConfigured()) {
-    await kvSetJson(KV_KEYS.records, records);
+    const ok = await kvSetJson(KV_KEYS.records, records);
+    if (!ok) {
+      console.warn('Warning: kvSetJson failed while saving attendance records.');
+    }
   }
 
   await ensureDataDir();
-  const { dir, excel } = paths();
+  const { dir, excel, recordsBackup } = paths();
+  await fs.writeFile(recordsBackup, JSON.stringify(records, null, 2), 'utf8');
+
   const workbook = buildWorkbookFromRecords(records);
   const tempPath = path.join(dir, `.${EXCEL_FILENAME}.${process.pid}.${Date.now()}.tmp.xlsx`);
   await workbook.xlsx.writeFile(tempPath);
@@ -317,13 +367,13 @@ export async function registerAttendance(input: AppendAttendanceInput): Promise<
     const normalizedCode = input.codigo.trim().toUpperCase();
     const normalizedJornada = input.jornada.trim().toLowerCase();
 
+    const serverClock = getServerTimeSnapshot();
     const existing = records.find(
       (r) =>
         r.codigo.trim().toUpperCase() === normalizedCode &&
-        r.jornada.trim().toLowerCase() === normalizedJornada
+        r.jornada.trim().toLowerCase() === normalizedJornada &&
+        r.fecha.trim() === serverClock.fecha
     );
-
-    const serverClock = getServerTimeSnapshot();
 
     if (existing) {
       const attempt: DuplicateAttempt = {

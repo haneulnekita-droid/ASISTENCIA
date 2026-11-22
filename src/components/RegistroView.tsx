@@ -692,11 +692,28 @@ export function RegistroView() {
                         </div>
                       </div>
 
+                      {/* Inline validation / duplicate feedback near submit CTA for mobile visibility */}
+                      {duplicateNotice && (
+                        <div className="p-4 rounded-2xl bg-[#FEF9E7] border-2 border-[#F5D67B] text-[#6B4A00] text-sm flex items-start gap-3">
+                          <AlertTriangle className="w-5 h-5 text-[#C2820A] shrink-0 mt-0.5" />
+                          <div className="space-y-1">
+                            <p className="font-bold">Registro ya existente</p>
+                            <p>{duplicateNotice.message}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {formError && (
+                        <div className="p-4 rounded-2xl bg-[#FEF2F2] border border-[#FECACA] text-[#991B1B] text-sm">
+                          {formError}
+                        </div>
+                      )}
+
                       {/* Vibrant Submit CTA */}
                       <div className="pt-1">
                         <button
                           type="submit"
-                          disabled={submitting || !info}
+                          disabled={submitting}
                           className="w-full min-h-[58px] px-6 py-3.5 rounded-2xl bg-gradient-to-r from-[#5B3FD9] via-[#6D4AFF] to-[#5B3FD9] hover:from-[#4C31C7] hover:to-[#4C31C7] active:scale-[0.99] disabled:opacity-60 text-white font-bold text-base tracking-wide shadow-[0_12px_24px_-8px_rgba(91,63,217,0.55)] flex items-center justify-center gap-2.5 transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#5B3FD9]"
                         >
                           <UserCheck className="w-5 h-5 shrink-0" />

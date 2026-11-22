@@ -8,14 +8,14 @@ import { CEREBRO_ESCENA_IMG, CEREBRO_ZEN_IMG } from './MascotGuide';
 
 interface AdminLoginViewProps {
   authStatus: AuthStatusResponse;
-  onAuthenticated: (token: string, username: string) => void;
+  onAuthenticated: (token: string, username: string, rememberDevice: boolean) => void;
 }
 
 export function AdminLoginView({ authStatus, onAuthenticated }: AdminLoginViewProps) {
   const isSetupMode = !authStatus.initialized;
   const [username, setUsername] = useState(authStatus.usernameHint || 'facilitadora');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [rememberDevice, setRememberDevice] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,14 +34,10 @@ export function AdminLoginView({ authStatus, onAuthenticated }: AdminLoginViewPr
         setError('La contraseña debe tener al menos 6 caracteres.');
         return;
       }
-      if (password !== confirmPassword) {
-        setError('Las contraseñas no coinciden.');
-        return;
-      }
       setSubmitting(true);
       try {
         const res = await setupFirstRunAdmin(username.trim(), password);
-        onAuthenticated(res.token, res.username);
+        onAuthenticated(res.token, res.username, rememberDevice);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'No se pudo completar el registro inicial.');
       } finally {
@@ -58,7 +54,7 @@ export function AdminLoginView({ authStatus, onAuthenticated }: AdminLoginViewPr
     setSubmitting(true);
     try {
       const res = await loginAdmin(username.trim(), password);
-      onAuthenticated(res.token, res.username);
+      onAuthenticated(res.token, res.username, rememberDevice);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Usuario o contraseña incorrectos.');
     } finally {
@@ -113,17 +109,17 @@ export function AdminLoginView({ authStatus, onAuthenticated }: AdminLoginViewPr
                   {isSetupMode ? <KeyRound className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
                   <span>
                     {isSetupMode
-                      ? 'Configuración inicial de acceso privado'
+                      ? 'Configuración inicial rápida'
                       : 'Acceso privado para facilitadoras'}
                   </span>
                 </div>
                 <h1 className="text-2xl sm:text-3xl font-bold text-[#241B35] text-balance">
-                  {isSetupMode ? 'Crea la clave de facilitadora' : 'Inicia sesión en el panel'}
+                  {isSetupMode ? 'Crea tu clave de facilitadora' : 'Inicia sesión en el panel'}
                 </h1>
                 <p className="text-sm text-[#5A4E73] leading-relaxed">
                   {isSetupMode
-                    ? 'Es el primer uso del panel. Define el usuario y contraseña que usarán las facilitadoras para consultar asistencias y descargar el Excel.'
-                    : 'Ingresa tus credenciales para ver estadísticas, pulso del semestre y descargar los registros en Excel.'}
+                    ? 'Define tu usuario y contraseña (mínimo 6 caracteres) para ingresar de inmediato al panel y al historial.'
+                    : 'Ingresa tus credenciales para ver estadísticas, historial completo y descargar los registros en Excel.'}
                 </p>
               </div>
 
@@ -159,6 +155,7 @@ export function AdminLoginView({ authStatus, onAuthenticated }: AdminLoginViewPr
                       type={showPassword ? 'text' : 'password'}
                       autoComplete={isSetupMode ? 'new-password' : 'current-password'}
                       required
+                      placeholder={isSetupMode ? 'Mínimo 6 caracteres' : 'Ingresa tu contraseña'}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       className="w-full min-h-[48px] pl-4 pr-12 py-2.5 rounded-xl bg-[#F8F5FF] border border-[#D4C7F2] text-[#241B35] focus:outline-none focus:ring-2 focus:ring-[#5B3FD9]"
@@ -174,25 +171,15 @@ export function AdminLoginView({ authStatus, onAuthenticated }: AdminLoginViewPr
                   </div>
                 </div>
 
-                {isSetupMode && (
-                  <div>
-                    <label
-                      htmlFor="admin-pass-confirm"
-                      className="block text-sm font-semibold text-[#241B35] mb-1.5"
-                    >
-                      Confirmar contraseña
-                    </label>
-                    <input
-                      id="admin-pass-confirm"
-                      type={showPassword ? 'text' : 'password'}
-                      autoComplete="new-password"
-                      required
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full min-h-[48px] px-4 py-2.5 rounded-xl bg-[#F8F5FF] border border-[#D4C7F2] text-[#241B35] focus:outline-none focus:ring-2 focus:ring-[#5B3FD9]"
-                    />
-                  </div>
-                )}
+                <label className="flex items-center gap-2.5 text-xs text-[#45395E] cursor-pointer select-none pt-1">
+                  <input
+                    type="checkbox"
+                    checked={rememberDevice}
+                    onChange={(e) => setRememberDevice(e.target.checked)}
+                    className="w-4 h-4 rounded accent-[#5B3FD9]"
+                  />
+                  <span>Mantener sesión iniciada en este navegador para ingresar rápido</span>
+                </label>
 
                 <button
                   type="submit"
@@ -200,9 +187,9 @@ export function AdminLoginView({ authStatus, onAuthenticated }: AdminLoginViewPr
                   className="w-full min-h-[52px] mt-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-[#5B3FD9] to-[#6D4AFF] hover:from-[#4C31C7] hover:to-[#4C31C7] disabled:opacity-60 text-white font-bold text-sm shadow-[0_10px_22px_-8px_rgba(91,63,217,0.45)] transition-all cursor-pointer"
                 >
                   {submitting
-                    ? 'Verificando...'
+                    ? 'Ingresando...'
                     : isSetupMode
-                      ? 'Guardar acceso y entrar al panel'
+                      ? 'Guardar acceso y entrar ahora'
                       : 'Ingresar al panel administrativo'}
                 </button>
               </form>
