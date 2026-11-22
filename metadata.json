@@ -1,0 +1,6 @@
+{
+  "name": "Mi Huella de Bienestar",
+  "description": "Aplicación web para el registro y control de asistencia mediante QR de la jornada de evaluación de impacto: De la mochila a las herramientas (V ciclo de Trabajo Social), con base de datos en Excel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
